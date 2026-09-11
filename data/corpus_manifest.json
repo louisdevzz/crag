@@ -1,0 +1,111 @@
+{
+  "total_documents": 8,
+  "total_provisions": 633,
+  "total_strips": 1069,
+  "documents": [
+    {
+      "id": "DOC_41_2024_QH15",
+      "document_number": "41/2024/QH15",
+      "title": "Luật BẢO HIỂM XÃ HỘI",
+      "document_type": "Luật",
+      "issuing_authority": "Chính phủ",
+      "issued_at": null,
+      "effective_from": "2025-07-01",
+      "effective_to": null,
+      "status": "effective",
+      "source_url": "file:///home/ubuntu/ai-agent-crag/data/Bảo hiểm xã hội/41-2024-qh15.pdf",
+      "file_path": "/home/ubuntu/ai-agent-crag/data/Bảo hiểm xã hội/41-2024-qh15.pdf"
+    },
+    {
+      "id": "45_SIGNED",
+      "document_number": "45.signed",
+      "title": "Văn bản quy phạm pháp luật 45.signed",
+      "document_type": "Văn bản quy phạm pháp luật",
+      "issuing_authority": "Chính phủ",
+      "issued_at": null,
+      "effective_from": null,
+      "effective_to": null,
+      "status": "effective",
+      "source_url": "file:///home/ubuntu/ai-agent-crag/data/Luật lao động/45.signed.pdf",
+      "file_path": "/home/ubuntu/ai-agent-crag/data/Luật lao động/45.signed.pdf"
+    },
+    {
+      "id": "67QH_SIGNED",
+      "document_number": "67qh.signed",
+      "title": "Văn bản quy phạm pháp luật 67qh.signed",
+      "document_type": "Văn bản quy phạm pháp luật",
+      "issuing_authority": "Chính phủ",
+      "issued_at": null,
+      "effective_from": null,
+      "effective_to": null,
+      "status": "effective",
+      "source_url": "file:///home/ubuntu/ai-agent-crag/data/Thuế doanh nghiệp/67qh.signed.pdf",
+      "file_path": "/home/ubuntu/ai-agent-crag/data/Thuế doanh nghiệp/67qh.signed.pdf"
+    },
+    {
+      "id": "168ND_SIGNED",
+      "document_number": "168nd.signed",
+      "title": "Văn bản quy phạm pháp luật 168nd.signed",
+      "document_type": "Văn bản quy phạm pháp luật",
+      "issuing_authority": "Chính phủ",
+      "issued_at": null,
+      "effective_from": null,
+      "effective_to": null,
+      "status": "effective",
+      "source_url": "file:///home/ubuntu/ai-agent-crag/data/Đăng ký doanh nghiệp/168nd.signed.pdf",
+      "file_path": "/home/ubuntu/ai-agent-crag/data/Đăng ký doanh nghiệp/168nd.signed.pdf"
+    },
+    {
+      "id": "DOC_296_2026_ND",
+      "document_number": "296/2026/ND",
+      "title": "Văn bản quy phạm pháp luật 296_2026_nd-cp_23072026-signed.signed",
+      "document_type": "Văn bản quy phạm pháp luật",
+      "issuing_authority": "Chính phủ",
+      "issued_at": null,
+      "effective_from": null,
+      "effective_to": null,
+      "status": "effective",
+      "source_url": "file:///home/ubuntu/ai-agent-crag/data/Đăng ký doanh nghiệp/296_2026_nd-cp_23072026-signed.signed.pdf",
+      "file_path": "/home/ubuntu/ai-agent-crag/data/Đăng ký doanh nghiệp/296_2026_nd-cp_23072026-signed.signed.pdf"
+    },
+    {
+      "id": "59_SIGNED",
+      "document_number": "59.signed",
+      "title": "Văn bản quy phạm pháp luật 59.signed",
+      "document_type": "Văn bản quy phạm pháp luật",
+      "issuing_authority": "Chính phủ",
+      "issued_at": null,
+      "effective_from": null,
+      "effective_to": null,
+      "status": "effective",
+      "source_url": "file:///home/ubuntu/ai-agent-crag/data/Đăng ký doanh nghiệp/59.signed.pdf",
+      "file_path": "/home/ubuntu/ai-agent-crag/data/Đăng ký doanh nghiệp/59.signed.pdf"
+    },
+    {
+      "id": "59TIEP",
+      "document_number": "59tiep",
+      "title": "Văn bản quy phạm pháp luật 59tiep",
+      "document_type": "Văn bản quy phạm pháp luật",
+      "issuing_authority": "Quốc hội",
+      "issued_at": null,
+      "effective_from": null,
+      "effective_to": null,
+      "status": "effective",
+      "source_url": "file:///home/ubuntu/ai-agent-crag/data/Đăng ký doanh nghiệp/59tiep.pdf",
+      "file_path": "/home/ubuntu/ai-agent-crag/data/Đăng ký doanh nghiệp/59tiep.pdf"
+    },
+    {
+      "id": "76QH_SIGNED",
+      "document_number": "76qh.signed",
+      "title": "Văn bản quy phạm pháp luật 76qh.signed",
+      "document_type": "Văn bản quy phạm pháp luật",
+      "issuing_authority": "Chính phủ",
+      "issued_at": null,
+      "effective_from": null,
+      "effective_to": null,
+      "status": "effective",
+      "source_url": "file:///home/ubuntu/ai-agent-crag/data/Đăng ký doanh nghiệp/76qh.signed.pdf",
+      "file_path": "/home/ubuntu/ai-agent-crag/data/Đăng ký doanh nghiệp/76qh.signed.pdf"
+    }
+  ]
+}

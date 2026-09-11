@@ -1,0 +1,77 @@
+% !TEX root = ../main.tex
+\chapter{Kế hoạch Thực hiện, Checklist \& Hướng dẫn Báo cáo}
+
+\section{Checklist CRAG Core Trước khi Triển khai Mở rộng}
+
+\begin{infobox}{14 Tiêu chí Bắt buộc Hoàn thành cho Lõi CRAG}
+\begin{enumerate}[label=\textbf{[\arabic*]}]
+    \item Corpus pháp luật lấy từ nguồn chính thức của cơ quan nhà nước, có đầy đủ metadata hiệu lực và URL.
+    \item Phân tách đoạn theo cấu trúc pháp lý (\textit{Legal-aware chunking}: Chương $\to$ Điều $\to$ Khoản $\to$ Điểm).
+    \item Hệ thống Hybrid Retrieval (Dense BGE-M3 + Lexical BM25 + RRF + Reranker) hoạt động ổn định.
+    \item Retrieval Evaluator phân loại độc lập và chính xác 3 nhánh: Correct, Ambiguous, Incorrect.
+    \item Hai ngưỡng $T_{low}$ và $T_{high}$ được tối ưu bằng thực nghiệm quét lưới trên Calibration Set.
+    \item Nhánh \textbf{Correct} kích hoạt thành công cơ chế Knowledge Refinement bóc tách legal strips.
+    \item Nhánh \textbf{Incorrect} kích hoạt Query Rewrite $\to$ Controlled Web Search $\to$ Evidence Selection.
+    \item Nhánh \textbf{Ambiguous} kích hoạt đồng thời Refinement và Web Search $\to$ Merge Evidence đa nguồn.
+    \item Generator chỉ được quyền sử dụng các đoạn trích đã vượt qua bộ lọc bằng chứng.
+    \item Citation Validator phát hiện và chặn đứng mọi trích dẫn sai số hiệu hoặc không có thật.
+    \item Sở hữu tập kiểm thử độc lập Held-out Test Set (40 câu) có ground-truth chi tiết.
+    \item Chạy thực nghiệm đo lường đầy đủ trên các hệ thống Baseline: S0, S1, S2, S3 và S4 (Full CRAG).
+    \item Phân tích ít nhất một trường hợp thất bại thực tế (\textit{Failure Case Analysis}) của hệ thống.
+    \item \textbf{Cam kết không sử dụng bất kỳ số liệu giả định hay suy đoán nào trong báo cáo.}
+\end{enumerate}
+\end{infobox}
+
+\section{Lộ trình 17 Giai đoạn Triển khai Dự án}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{images/figure_3.png}
+    \caption{Thứ tự thực hiện chuẩn mực: Ưu tiên dữ liệu, đo lường và lõi CRAG trước khi làm UI.}
+    \label{fig:implementation_flow}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\caption{Kế hoạch thực hiện dự án theo 17 giai đoạn chuẩn hóa}
+\label{tab:17_phases}
+\renewcommand{\arraystretch}{1.2}
+\rowcolors{2}{tablerowalt}{white}
+\begin{tabularx}{\textwidth}{C{1.2cm} L{5.8cm} Y}
+\toprule
+\rowcolor{tableheader}\color{white}\textbf{Giai đoạn} & \color{white}\textbf{Công việc chi tiết} & \color{white}\textbf{Sản phẩm đầu ra (Deliverables)} \\
+\midrule
+1 & Xác định phạm vi và chính sách nguồn dữ liệu & Danh mục 50--100 văn bản pháp lý chính thống. \\
+2 & Thu thập và bóc tách văn bản thô & Thư mục \texttt{data/raw} và \texttt{data/processed}. \\
+3 & Chuẩn hóa metadata và quan hệ sửa đổi/bổ sung & SQLite database \texttt{app.db} với bảng quan hệ. \\
+4 & Xây dựng Calibration Set và Held-out Test Set & \texttt{calibration\_set.json} và \texttt{test\_set.json}. \\
+5 & Cài đặt baseline truy hồi Dense Vector & Vector Store Chroma với embedding BGE-M3. \\
+6 & Bổ sung BM25, thuật toán RRF và Cross-Encoder & Module Hybrid Retrieval hoàn chỉnh. \\
+7 & Cài đặt Retrieval Evaluator và chọn ngưỡng & Cặp giá trị tối ưu $(T_{low}, T_{high})$ trên Calibration Set. \\
+8 & Hiện thực cơ chế Knowledge Refinement & Nhánh \textbf{CORRECT} bóc tách legal strips. \\
+9 & Viết lại truy vấn và tìm kiếm web chính thống & Nhánh \textbf{INCORRECT} với bộ lọc allow-list. \\
+10 & Thuật toán hợp nhất và khử trùng lặp bằng chứng & Nhánh \textbf{AMBIGUOUS} tích hợp đa nguồn. \\
+11 & Xây dựng Citation Validator xác định & Module kiểm tra tính xác thực của citation. \\
+12 & Hoàn thiện LangGraph Agent Core & StateGraph điều phối toàn bộ workflow CRAG. \\
+13 & Đo lường Baseline, Ablation và chỉ số RAGAS & Bảng dữ liệu thực nghiệm và vết LangFuse. \\
+14 & Phát triển FastAPI Gateway và Next.js Frontend & Giao diện tra cứu và bảng trích dẫn citation. \\
+15 & Tích hợp Recent History và Semantic Memory & Module lưu trữ phiên hội thoại SQLite. \\
+16 & Đánh giá thử nghiệm A/B Memory & Báo cáo an toàn cách ly Cross-client = 0. \\
+17 & Hoàn thiện Báo cáo kỹ thuật và Slide thuyết minh & Bản báo cáo LaTeX và mã nguồn nghiệm thu. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Đề cương Chi tiết 8 Chương của Báo cáo Kỹ thuật}
+
+Báo cáo kỹ thuật tốt nghiệp hoặc đồ án môn học chuẩn Thạc sĩ được phân bổ theo 8 chương:
+\begin{enumerate}
+    \item \textbf{Chương 1 -- Giới thiệu:} Bối cảnh ảo giác do retrieval sai trong lĩnh vực luật; bài toán trợ lý tuân thủ pháp lý doanh nghiệp; mục tiêu và 5 câu hỏi nghiên cứu; phạm vi; các đóng góp chính của đề tài.
+    \item \textbf{Chương 2 -- Cơ sở Lý thuyết:} Tổng quan LLM nội bộ; tác tử AI có trạng thái (Stateful AI Agent); kiến trúc RAG cổ điển; Dense Retrieval \& BGE-M3; BM25 \& Hybrid Search; Reranker Cross-Encoder; LangGraph; nguyên lý Corrective RAG; khung đánh giá RAGAS; lý thuyết về Memory trong Agent.
+    \item \textbf{Chương 3 -- Phân tích \& Thiết kế Hệ thống:} Đặc tả yêu cầu người dùng; kiến trúc 3 Layer; workflow chi tiết của LangGraph; thiết kế cơ sở dữ liệu pháp lý và quan hệ sửa đổi; mô hình AgentState; chính sách kiểm soát nguồn web; thiết kế hệ thống trích dẫn.
+    \item \textbf{Chương 4 -- Chuẩn bị Dữ liệu \& Tri thức:} Thu thập dữ liệu từ các cổng công quyền; kỹ thuật Legal-aware chunking; chuẩn hóa metadata; mô hình hóa lịch sử văn bản; lập chỉ mục vector Chroma và chỉ mục từ khóa BM25.
+    \item \textbf{Chương 5 -- Xây dựng Hệ thống Agent:} Hiện thực Hybrid Retrieval, RRF và Reranker; xây dựng Evaluator với hai ngưỡng; chi tiết hóa 3 nhánh CRAG; Generator có cấu trúc JSON; Citation Validator; kết nối FastAPI và Next.js UI; giám sát qua LangFuse.
+    \item \textbf{Chương 6 -- Thiết kế Thực nghiệm:} Tách biệt Calibration Set và Held-out Test Set; thiết kế các hệ thống Baseline S0--S4; các phép thử Ablation; hệ thống các chỉ số: Retrieval, Routing/Fallback, Generation (RAGAS), Legal Metrics; quy trình quét lưới chọn ngưỡng.
+    \item \textbf{Chương 7 -- Kết quả Thực nghiệm \& Thảo luận:} Đánh giá chất lượng truy hồi; ma trận nhầm lẫn (Confusion Matrix) của Evaluator; hiệu quả xử lý 3 nhánh CRAG; phân tích các ca gọi Web Fallback; độ chính xác trích dẫn; phân tích các ca thất bại thực tế (\textit{Failure Cases}).
+    \item \textbf{Chương 8 -- Kết luận \& Hướng Phát triển:} Đánh giá mức độ hoàn thành so với mục tiêu ban đầu; các hạn chế tồn đọng; đề xuất hướng mở rộng (Knowledge Graph, Human-in-the-loop, quản lý phiên bản tự động).
+\end{enumerate}

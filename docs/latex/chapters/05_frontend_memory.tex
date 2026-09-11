@@ -1,0 +1,167 @@
+% !TEX root = ../main.tex
+\chapter{Mở rộng: Next.js Frontend \& Quản lý Session Memory}
+
+\section{Kiến trúc Tích hợp Next.js + FastAPI + Memory}
+
+Hệ thống bổ sung giao diện người dùng hiện đại và cơ chế quản lý ngữ cảnh phiên hội thoại sau khi lõi CRAG đã được kiểm chứng độc lập.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{keypoint}
+    \centering
+    \textbf{Luồng tương tác Frontend -- Backend -- Memory}\\[0.2cm]
+    $\text{Next.js Frontend (Trình duyệt)} \;\xrightarrow{\text{client\_id, session\_id}}\; \text{FastAPI Gateway} \;\longrightarrow\; \text{LangGraph Agent Core}$\\
+    $\Downarrow$\\
+    $\text{Memory Context (Bối cảnh doanh nghiệp)} \quad \ne \quad \text{Legal Evidence (Căn cứ pháp lý hiện hành)}$
+    \end{keypoint}
+    \caption{Kiến trúc tách biệt giữa ngữ cảnh người dùng và căn cứ pháp lý.}
+    \label{fig:memory_flow}
+\end{figure}
+
+Next.js lưu trữ một mã định danh ẩn danh (\texttt{client\_id}) trên trình duyệt qua \texttt{localStorage} và tự động sinh \texttt{session\_id} ngẫu nhiên cho từng phiên làm việc. FastAPI tiếp nhận yêu cầu, nạp lịch sử tương tác gần nhất và thông tin hồ sơ doanh nghiệp đã xác thực, truyền vào AgentState nhưng \textbf{cô lập hoàn toàn khỏi danh mục trích dẫn pháp lý}.
+
+\section{Phân cấp Ba Lớp Memory}
+
+\begin{table}[htbp]
+\centering
+\caption{Phân tầng 3 cấp độ Memory trong hệ thống}
+\label{tab:memory_layers}
+\renewcommand{\arraystretch}{1.3}
+\rowcolors{2}{tablerowalt}{white}
+\begin{tabularx}{\textwidth}{L{3.5cm} L{4.2cm} Y}
+\toprule
+\rowcolor{tableheader}\color{white}\textbf{Loại Memory} & \color{white}\textbf{Vị trí lưu trữ} & \color{white}\textbf{Mục đích và Phạm vi sử dụng} \\
+\midrule
+\textbf{Working / Session} & \texttt{AgentState} \& RAM & Duy trì trạng thái câu hỏi, kết quả truy hồi và bằng chứng của phiên chat tức thời. \\
+\textbf{Episodic / History} & Bảng \texttt{query\_logs} (SQLite) & Lưu vết tuần tự các câu hỏi, câu trả lời, route đã chọn và hành động CRAG. \\
+\textbf{Semantic / Profile} & Bảng \texttt{client\_memories} & Ghi nhớ các thuộc tính bền vững của doanh nghiệp (loại hình, địa bàn, ngành nghề). \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{calloutbox}{Nguyên tắc an toàn tối thượng (Memory Guardrail)}
+Memory chỉ đóng vai trò hỗ trợ bối cảnh và giải nghĩa đại từ. \textbf{Mọi phán quyết và kết luận pháp lý đều bắt buộc phải được truy hồi lại từ các văn bản hiện hành trong Legal Database hoặc Web chính thống.} Tuyệt đối không sử dụng câu trả lời lưu trong memory như một căn cứ pháp luật.
+\end{calloutbox}
+
+\section{Thiết kế Database cho Client, Session và Memory}
+
+\begin{lstlisting}[language=SQL, caption={Schema quản lý Client, Session và Lịch sử truy vấn}]
+CREATE TABLE clients (
+    id TEXT PRIMARY KEY,
+    memory_enabled INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE chat_sessions (
+    id TEXT PRIMARY KEY,
+    client_id TEXT NOT NULL,
+    started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    last_active_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(client_id) REFERENCES clients(id)
+);
+
+CREATE TABLE query_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    question TEXT NOT NULL,
+    answer TEXT,
+    route TEXT,
+    crag_action TEXT,
+    source_type TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(client_id) REFERENCES clients(id),
+    FOREIGN KEY(session_id) REFERENCES chat_sessions(id)
+);
+
+CREATE TABLE client_memories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id TEXT NOT NULL,
+    memory_key TEXT NOT NULL,
+    memory_value TEXT NOT NULL,
+    confidence REAL DEFAULT 1.0,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(client_id, memory_key),
+    FOREIGN KEY(client_id) REFERENCES clients(id)
+);
+\end{lstlisting}
+
+\section{Kiểm soát Semantic Memory qua Danh mục Cho phép (Allow-List)}
+
+Hệ thống áp dụng cơ chế trích xuất có kiểm soát nghiêm ngặt nhằm bảo vệ quyền riêng tư và tránh ô nhiễm bộ nhớ:
+
+\begin{lstlisting}[language=Python, caption={Cơ chế Allow-List và trích xuất Semantic Memory}]
+ALLOWED_MEMORY_KEYS = {
+    "business_type",      # Vi du: Cong ty TNHH, Co phan
+    "industry",           # Nganh nghe: Xay dung, Thuong mai dien tu
+    "province",           # Dia ban: Ha Noi, TP.HCM, Long An
+    "frequent_topic",     # Chu de hay quan tam: Lao dong, Hop dong
+    "preferred_answer"    # So thich trinh bay: Ngan gon, Chi tiet
+}
+
+# Prompt trich xuat thong tin ben vung tu hoi thoai:
+# 1. Chi trich xuat cac thuoc tinh nam trong danh muc cho phep ALLOWED_MEMORY_KEYS.
+# 2. Tuyet doi khong luu mat khau, CCCD/CMND, bi mat kinh doanh.
+# 3. Gan diem tin cay (confidence) tu 0.0 den 1.0.
+# 4. Tra ve mang JSON rong [] neu khong co thong tin phu hop.
+\end{lstlisting}
+
+\section{Prompt Trả lời Phân tách Bối cảnh và Căn cứ Pháp lý}
+
+\begin{lstlisting}[caption={Prompt trả lời kết hợp Memory có kiểm soát}]
+BOI CANH CLIENT (Chi dung de hieu hoan canh, khong co gia tri phap ly):
+{memory_context}
+
+EVIDENCE PHAP LY HIEN TAI (Nguon can cu duy nhat de dua ra ket luan):
+{legal_context}
+
+CAU HOI HIEN TAI:
+{query}
+
+QUY TAC THUC THI:
+1. Memory chi giup giai thich dai tu (vi du: "cong ty toi" -> Cong ty TNHH tai Long An).
+2. Tuyet doi khong lay thong tin tu cau tra loi cu thay the cho van ban phap luat hien hanh.
+3. Moi ket luan phap ly dua ra bat buoc phai trich dan source_id tu danh muc EVIDENCE.
+4. Neu EVIDENCE khong co dieu khoan tuong ung, noi ro: "Chua du can cu phap ly de ket luan".
+\end{lstlisting}
+
+\section{Kịch bản Demo Tái sử dụng Ngữ cảnh trên Trình duyệt}
+
+\begin{table}[htbp]
+\centering
+\caption{Kịch bản minh chứng khả năng duy trì ngữ cảnh trên cùng trình duyệt}
+\label{tab:demo_memory}
+\renewcommand{\arraystretch}{1.25}
+\rowcolors{2}{tablerowalt}{white}
+\begin{tabularx}{\textwidth}{C{1.8cm} L{5cm} Y}
+\toprule
+\rowcolor{tableheader}\color{white}\textbf{Thời điểm} & \color{white}\textbf{Hành động người dùng} & \color{white}\textbf{Cơ chế xử lý của hệ thống Agent} \\
+\midrule
+\textbf{Lần 1} & Truy cập lần đầu qua trình duyệt Next.js. & Ứng dụng tạo \texttt{client\_id} ẩn danh lưu vào \texttt{localStorage} và sinh \texttt{session\_id} mới. \\
+\textbf{Lần 1} & \textit{“Tôi phụ trách doanh nghiệp TNHH tại Long An, muốn hỏi về hợp đồng thử việc.”} & Hệ thống trích xuất và lưu vào \texttt{client\_memories}: \texttt{business\_type = TNHH}, \texttt{province = Long An}. \\
+\textbf{Lần 2} & Đóng tab, sau đó mở lại ứng dụng trên cùng trình duyệt. & Next.js tự động đọc lại \texttt{client\_id}, sinh \texttt{session\_id} mới; backend tự động nạp hồ sơ đã lưu. \\
+\textbf{Lần 2} & \textit{“Vậy trường hợp công ty tôi có được ký phụ lục gia hạn thời gian thử việc không?”} & Agent nhận diện đại từ \textit{“công ty tôi”} là Công ty TNHH, sau đó kích hoạt CRAG truy hồi quy định Bộ luật Lao động 2019 để trả lời chính xác. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Bảo mật và Tiêu chuẩn Cách ly Dữ liệu (Isolation)}
+
+\begin{keypoint}
+\textbf{Chỉ số An toàn Tuyệt đối:} Hệ thống đặt tiêu chuẩn \textbf{Cross-client Contamination = 0}. Trong toàn bộ các ca kiểm thử bảo mật, dữ liệu lịch sử hoặc memory của Client A tuyệt đối không bao giờ được xuất hiện trong phiên truy vấn của Client B. Mọi câu lệnh truy vấn đều bắt buộc có ràng buộc tham số:
+\begin{center}
+\texttt{WHERE client\_id = ? AND session\_id = ?}
+\end{center}
+\end{keypoint}
+
+\section{Đánh giá Thử nghiệm A/B Memory}
+
+Tiến hành đánh giá A/B trên 3 cấu hình thử nghiệm:
+\begin{itemize}
+    \item \textbf{Cấu hình A (No Memory):} Tác tử xử lý độc lập từng câu hỏi thô.
+    \item \textbf{Cấu hình B (Recent History):} Nạp 6 lượt tương tác gần nhất trong phiên.
+    \item \textbf{Cấu hình C (History + Semantic Memory):} Kết hợp toàn diện lịch sử và thuộc tính doanh nghiệp.
+\end{itemize}
+
+Hệ thống đo lường độ chính xác giải tham chiếu (\textit{Context Reuse Accuracy}), độ trung thực (\textit{Faithfulness}) và chi phí trễ (\textit{Latency overhead}) để bảo đảm việc bổ sung Memory không làm suy giảm độ chính xác pháp lý của lõi CRAG.

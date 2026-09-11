@@ -1,0 +1,12 @@
+{
+  "retrieval_recall_at_5": 0.3333,
+  "retrieval_mrr": 0.2819,
+  "action_macro_f1": 0.4474,
+  "fallback_precision": 1.0,
+  "fallback_recall": 1.0,
+  "false_fallback_rate": 0.0,
+  "citation_accuracy": 0.975,
+  "citation_coverage": 0.975,
+  "legal_temporal_correctness": 0.8,
+  "sample_count": 40
+}

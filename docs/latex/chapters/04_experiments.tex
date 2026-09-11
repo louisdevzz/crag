@@ -1,0 +1,128 @@
+% !TEX root = ../main.tex
+\chapter{Thiết kế Thực nghiệm \& Đánh giá Hệ thống}
+
+\section{Thiết kế Hệ thống Baseline và Nghiên cứu Ablation}
+
+Để chứng minh tính vượt trội của Corrective RAG ở chuẩn mực nghiên cứu cao học, không thể chỉ so sánh đơn thuần giữa Traditional RAG và Full CRAG. Cần xây dựng các hệ thống đối chứng để phân tách rạch ròi: \textit{Sự cải thiện đến từ cơ chế hiệu chỉnh tri thức hay chỉ đơn thuần do hệ thống được cấp thêm nguồn Web bên ngoài?}
+
+\begin{table}[htbp]
+\centering
+\caption{Ma trận các hệ thống Baseline thực nghiệm (S0 -- S4)}
+\label{tab:baselines}
+\renewcommand{\arraystretch}{1.25}
+\rowcolors{2}{tablerowalt}{white}
+\begin{tabularx}{\textwidth}{C{1.8cm} C{2.2cm} C{2.5cm} C{2.5cm} Y}
+\toprule
+\rowcolor{tableheader}\color{white}\textbf{Hệ thống} & \color{white}\textbf{Evaluator} & \color{white}\textbf{Web Search} & \color{white}\textbf{Correction} & \color{white}\textbf{Mục đích nghiên cứu} \\
+\midrule
+\textbf{S0} & Không & Không & Không & LLM-only: Đo lường tri thức nội tại của mô hình, làm mốc tham chiếu không retrieval. \\
+\textbf{S1} & Không & Không & Không & Traditional RAG: Truy hồi Top-K cố định đưa thẳng vào Generator. \\
+\textbf{S2} & Không & Luôn luôn & Không & RAG + Always Web: Luôn tìm kiếm web để tách riêng hiệu ứng “có thêm nguồn ngoài”. \\
+\textbf{S3} & Có & Không & Một phần & RAG + Evaluator: Đánh giá bằng chứng nhưng chỉ quyết định trả lời hoặc từ chối (\textit{abstain}). \\
+\textbf{S4} & Có & Có điều kiện & Toàn diện & \textbf{Full CRAG đề xuất:} Đầy đủ 3 nhánh Correct, Ambiguous và Incorrect. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{infobox}{Các Biến thể Ablation Study Khuyến nghị}
+\begin{itemize}
+    \item \textbf{Ablation 1 (No Refinement):} Full CRAG loại bỏ bước Knowledge Refinement (đưa nguyên chunk dài vào Generator).
+    \item \textbf{Ablation 2 (No Rewrite):} Full CRAG loại bỏ Query Rewrite (dùng trực tiếp câu hỏi thô để search web).
+    \item \textbf{Ablation 3 (No Web Selection):} Lấy nguyên trang web fetch được mà không qua bộ lọc relevance strip.
+    \item \textbf{Ablation 4 (Dense-only):} Thay thế Hybrid Retrieval bằng truy hồi vector thuần túy BGE-M3.
+    \item \textbf{Ablation 5 (No Reranker):} Bỏ mô hình Cross-Encoder, dùng trực tiếp similarity score của vector để routing.
+\end{itemize}
+\end{infobox}
+
+\section{Thiết kế Tập Calibration và Held-Out Test Set}
+
+\begin{calloutbox}{Quy tắc vàng trong đánh giá học thuật}
+Tuyệt đối không sử dụng cùng một tập dữ liệu vừa để tìm ngưỡng $T_{low}/T_{high}$ vừa để báo cáo kết quả cuối cùng. Hệ thống phải tách biệt nghiêm ngặt hai tập dữ liệu độc lập:
+\end{calloutbox}
+
+\begin{table}[htbp]
+\centering
+\caption{Phân bổ các nhóm câu hỏi trong Held-out Test Set (40 câu)}
+\label{tab:test_set_distribution}
+\renewcommand{\arraystretch}{1.25}
+\rowcolors{2}{tablerowalt}{white}
+\begin{tabularx}{\textwidth}{L{5cm} C{2cm} Y}
+\toprule
+\rowcolor{tableheader}\color{white}\textbf{Nhóm câu hỏi kiểm thử} & \color{white}\textbf{Số lượng} & \color{white}\textbf{Mục tiêu kiểm chứng} \\
+\midrule
+Correct / In-corpus & 12 câu & Bằng chứng nội bộ đầy đủ, kiểm tra hiệu quả của Knowledge Refinement. \\
+Incorrect / Out-of-corpus & 10 câu & Corpus nội bộ thiếu hụt, kiểm tra khả năng kích hoạt Web Search chính thống. \\
+Ambiguous / Partial evidence & 8 câu & Kiểm tra cơ chế hợp nhất tri thức nội bộ và tri thức mở rộng bên ngoài. \\
+Metadata / Database queries & 5 câu & Đo lường độ chính xác của Router và khả năng truy vấn dữ liệu có cấu trúc. \\
+Temporal / Conflicting sources & 5 câu & Kiểm tra khả năng phát hiện văn bản hết hiệu lực và giải quyết xung đột điều luật. \\
+\midrule
+\textbf{Tổng cộng} & \textbf{40 câu} & \textbf{Tập dữ liệu độc lập hoàn toàn, khóa trước khi đo benchmark.} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Mỗi mẫu trong tập kiểm thử được lưu trữ dưới định dạng JSON chuẩn hóa:
+
+\begin{lstlisting}[language=Python, caption={Cấu trúc của một mẫu dữ liệu trong Test Set}]
+{
+  "question": "Quy định về thời gian thử việc tối đa đối với vị trí quản trị viên doanh nghiệp?",
+  "type": "ambiguous",
+  "expected_action": "AMBIGUOUS",
+  "as_of_date": "2026-01-01",
+  "expected_source_ids": ["BLLD2019_D25", "VBPL_ND145"],
+  "expected_provisions": ["Điều 25 Bộ luật Lao động 2019"],
+  "ground_truth": "Thời gian thử việc không quá 180 ngày đối với công việc của người quản lý doanh nghiệp theo quy định của Luật Doanh nghiệp..."
+}
+\end{lstlisting}
+
+\section{Hệ thống Chỉ số Đánh giá Toàn diện}
+
+\subsection{Chỉ số Đánh giá Truy hồi (Retrieval Metrics)}
+\begin{itemize}
+    \item \textbf{Recall@K:} Tỷ lệ bằng chứng pháp lý đúng xuất hiện trong Top-K tài liệu truy hồi.
+    \item \textbf{MRR (Mean Reciprocal Rank):} Vị trí nghịch đảo trung bình của bằng chứng đúng đầu tiên.
+    \item \textbf{nDCG@K (Normalized Discounted Cumulative Gain):} Đánh giá chất lượng của toàn bộ thứ hạng sắp xếp.
+\end{itemize}
+
+\subsection{Chỉ số Đánh giá Bộ điều hướng \& Fallback (Routing \& Fallback Metrics)}
+Nhằm đánh giá chính xác bộ điều hướng có kích hoạt Web Search đúng lúc hay lạm dụng quá mức, chỉ số Fallback được phân tách thành 3 đại lượng:
+\begin{align}
+\text{Fallback Precision} &= \frac{\text{Số lần kích hoạt Web đúng khi ngoài corpus}}{\text{Tổng số lần hệ thống kích hoạt Web Search}} \\[0.5em]
+\text{Fallback Recall} &= \frac{\text{Số câu hỏi ngoài corpus được phát hiện thành công}}{\text{Tổng số câu hỏi ngoài corpus trong tập test}} \\[0.5em]
+\text{False Fallback Rate} &= \frac{\text{Số câu hỏi trong corpus nhưng bị gọi nhầm ra Web}}{\text{Tổng số câu hỏi có sẵn trong corpus}}
+\end{align}
+
+\subsection{Chỉ số Đánh giá Thế hệ Sinh \& Độ chuẩn xác Pháp lý (Legal Metrics)}
+\begin{itemize}
+    \item \textbf{RAGAS Metrics:} \textit{Faithfulness} (tính trung thực so với bằng chứng), \textit{Answer Relevancy} (mức độ bám sát câu hỏi), \textit{Context Precision} và \textit{Context Recall}.
+    \item \textbf{Citation Accuracy:} Tỷ lệ các trích dẫn pháp lý có source\_id tồn tại, khớp chính xác số Điều/Khoản trong văn bản và URL kiểm chứng được.
+    \item \textbf{Citation Coverage:} Tỷ lệ các mệnh đề kết luận pháp lý trong câu trả lời có ít nhất một trích dẫn hợp lệ tương ứng.
+    \item \textbf{Legal Temporal Correctness:} Đo lường tỷ lệ các văn bản làm căn cứ trả lời còn nguyên giá trị hiệu lực tại thời điểm \texttt{as\_of\_date}.
+\end{itemize}
+
+\section{Thí nghiệm Lựa chọn Cặp Ngưỡng Relevance ($T_{low}, T_{high}$)}
+
+Trên tập Calibration Set (20 câu), tiến hành quét lưới (\textit{grid search}) các cặp giá trị $(T_{low}, T_{high})$ với điều kiện tiên quyết $T_{low} < T_{high}$ để chọn điểm cân bằng tối ưu giữa F1-Score và hạn chế False Fallback:
+
+\begin{table}[htbp]
+\centering
+\caption{Bảng khung thực nghiệm quét lưới lựa chọn ngưỡng (Grid Search Calibration)}
+\label{tab:threshold_tuning}
+\renewcommand{\arraystretch}{1.2}
+\rowcolors{2}{tablerowalt}{white}
+\begin{tabularx}{\textwidth}{C{1.4cm} C{1.4cm} Z Z Z C{2.2cm} C{2.5cm}}
+\toprule
+\rowcolor{tableheader}\color{white}$T_{low}$ & \color{white}$T_{high}$ & \color{white}Correct \% & \color{white}Ambiguous \% & \color{white}Incorrect \% & \color{white}Macro-F1 & \color{white}False Fallback \\
+\midrule
+0.20 & 0.60 & \dots & \dots & \dots & \dots & \dots \\
+0.25 & 0.65 & \dots & \dots & \dots & \dots & \dots \\
+0.30 & 0.70 & \dots & \dots & \dots & \dots & \dots \\
+0.35 & 0.75 & \dots & \dots & \dots & \dots & \dots \\
+0.40 & 0.80 & \dots & \dots & \dots & \dots & \dots \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{calloutbox}{Cam kết trung thực học thuật}
+Khung bảng trên là mẫu cấu trúc thí nghiệm. Điểm số chỉ được điền sau khi nhóm thực hiện chạy script đánh giá tự động trên tập dữ liệu thực tế. Tuyệt đối không tự điền số liệu giả.
+\end{calloutbox}

@@ -1,0 +1,324 @@
+[
+  {
+    "id": "TEST_01",
+    "question": "Quyền của người lao động tham gia bảo hiểm xã hội bắt buộc?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D8"],
+    "ground_truth": "Được cấp sổ bảo hiểm xã hội, được nhận lương hưu, trợ cấp bảo hiểm xã hội đầy đủ, kịp thời..."
+  },
+  {
+    "id": "TEST_02",
+    "question": "Trách nhiệm của người sử dụng lao động trong việc đóng bảo hiểm xã hội?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D11"],
+    "ground_truth": "Đăng ký tham gia bảo hiểm xã hội và đóng bảo hiểm xã hội đầy đủ, đúng thời hạn..."
+  },
+  {
+    "id": "TEST_03",
+    "question": "Các hành vi bị nghiêm cấm trong bảo hiểm xã hội theo quy định hiện hành?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D7"],
+    "ground_truth": "Trốn đóng bảo hiểm xã hội bắt buộc, chậm đóng tiền bảo hiểm xã hội, chiếm dụng tiền đóng..."
+  },
+  {
+    "id": "TEST_04",
+    "question": "Điều kiện hưởng chế độ ốm đau theo Luật Bảo hiểm xã hội?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D42"],
+    "ground_truth": "Người lao động bị ốm đau, tai nạn mà không phải là tai nạn lao động phải nghỉ việc và có xác nhận của cơ sở khám bệnh..."
+  },
+  {
+    "id": "TEST_05",
+    "question": "Thời gian tối đa hưởng chế độ ốm đau trong một năm đối với người làm nghề bình thường?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D43"],
+    "ground_truth": "30 ngày nếu đã đóng bảo hiểm xã hội dưới 15 năm; 40 ngày nếu đã đóng từ đủ 15 năm đến dưới 30 năm; 60 ngày nếu đã đóng từ đủ 30 năm trở lên..."
+  },
+  {
+    "id": "TEST_06",
+    "question": "Mức hưởng chế độ ốm đau tính theo tỷ lệ phần trăm tiền lương đóng bảo hiểm xã hội?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D44"],
+    "ground_truth": "Mức hưởng bằng 75% mức tiền lương làm căn cứ đóng bảo hiểm xã hội của tháng liền kề trước khi nghỉ việc..."
+  },
+  {
+    "id": "TEST_07",
+    "question": "Đối tượng nào được hưởng chế độ thai sản khi vợ sinh con?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D50"],
+    "ground_truth": "Lao động nam đang tham gia bảo hiểm xã hội có vợ sinh con được nghỉ việc hưởng chế độ thai sản..."
+  },
+  {
+    "id": "TEST_08",
+    "question": "Số ngày nghỉ việc hưởng chế độ thai sản của lao động nam khi vợ sinh con bình thường?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D54"],
+    "ground_truth": "05 ngày làm việc khi sinh con bình thường..."
+  },
+  {
+    "id": "TEST_09",
+    "question": "Điều kiện về số năm đóng bảo hiểm xã hội tối thiểu để hưởng lương hưu theo Luật Bảo hiểm xã hội 2024?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D64"],
+    "ground_truth": "Người lao động khi đủ tuổi nghỉ hưu và có thời gian đóng bảo hiểm xã hội bắt buộc từ đủ 15 năm trở lên được hưởng lương hưu."
+  },
+  {
+    "id": "TEST_10",
+    "question": "Mức hưởng lương hưu hàng tháng được tính như thế nào đối với lao động nam và lao động nữ có đủ 15 năm đóng bảo hiểm xã hội?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D66"],
+    "ground_truth": "Lao động nữ đóng đủ 15 năm được hưởng 45%; lao động nam đóng đủ 15 năm được hưởng 40%..."
+  },
+  {
+    "id": "TEST_11",
+    "question": "Các trường hợp người lao động được rút bảo hiểm xã hội một lần theo luật mới?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D70"],
+    "ground_truth": "Đủ tuổi nghỉ hưu mà chưa đủ 15 năm đóng bảo hiểm xã hội; ra nước ngoài để định cư; mắc một trong những bệnh hiểm nghèo..."
+  },
+  {
+    "id": "TEST_12",
+    "question": "Ai là người có quyền đăng ký tham gia bảo hiểm xã hội tự nguyện?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D3"],
+    "ground_truth": "Công dân Việt Nam từ đủ 15 tuổi trở lên và không thuộc đối tượng tham gia bảo hiểm xã hội bắt buộc..."
+  },
+  {
+    "id": "TEST_13",
+    "question": "Thủ tục xin giấy phép bay cho phương tiện bay không người lái (drone) quay phim nông nghiệp?",
+    "type": "incorrect",
+    "expected_action": "INCORRECT",
+    "expected_source_ids": [],
+    "ground_truth": "Quy định thuộc thẩm quyền Bộ Quốc phòng, ngoài cơ sở dữ liệu nội bộ."
+  },
+  {
+    "id": "TEST_14",
+    "question": "Quy định về tiêu chuẩn kỹ thuật thiết bị đo lường nước thải công nghiệp loại A?",
+    "type": "incorrect",
+    "expected_action": "INCORRECT",
+    "expected_source_ids": [],
+    "ground_truth": "Văn bản tiêu chuẩn kỹ thuật môi trường, ngoài cơ sở dữ liệu."
+  },
+  {
+    "id": "TEST_15",
+    "question": "Mức phí bảo vệ môi trường đối với khai thác khoáng sản bô-xít năm 2026?",
+    "type": "incorrect",
+    "expected_action": "INCORRECT",
+    "expected_source_ids": [],
+    "ground_truth": "Nghị định thuế tài nguyên khoáng sản, ngoài cơ sở dữ liệu."
+  },
+  {
+    "id": "TEST_16",
+    "question": "Quy chế kiểm soát tàu cá nước ngoài cập cảng biển Việt Nam để bốc dỡ thủy sản?",
+    "type": "incorrect",
+    "expected_action": "INCORRECT",
+    "expected_source_ids": [],
+    "ground_truth": "Văn bản ngành thủy sản hàng hải, ngoài cơ sở dữ liệu."
+  },
+  {
+    "id": "TEST_17",
+    "question": "Hồ sơ đăng ký lưu hành thuốc bảo vệ thực vật sinh học nhập khẩu từ Nhật Bản?",
+    "type": "incorrect",
+    "expected_action": "INCORRECT",
+    "expected_source_ids": [],
+    "ground_truth": "Thuộc quy chuẩn nông nghiệp, ngoài cơ sở dữ liệu."
+  },
+  {
+    "id": "TEST_18",
+    "question": "Điều kiện cấp chứng chỉ năng lực hoạt động thi công công trình hầm đường bộ cấp đặc biệt?",
+    "type": "incorrect",
+    "expected_action": "INCORRECT",
+    "expected_source_ids": [],
+    "ground_truth": "Thuộc pháp luật xây dựng chuyên ngành, ngoài cơ sở dữ liệu."
+  },
+  {
+    "id": "TEST_19",
+    "question": "Thuế suất thuế giá trị gia tăng đối với dịch vụ viễn thông quốc tế năm 2026?",
+    "type": "incorrect",
+    "expected_action": "INCORRECT",
+    "expected_source_ids": [],
+    "ground_truth": "Thuộc Luật Thuế GTGT, ngoài cơ sở dữ liệu."
+  },
+  {
+    "id": "TEST_20",
+    "question": "Mức trần lãi suất huy động tiền gửi kỳ hạn dưới 6 tháng của các ngân hàng thương mại?",
+    "type": "incorrect",
+    "expected_action": "INCORRECT",
+    "expected_source_ids": [],
+    "ground_truth": "Thuộc quyết định của Ngân hàng Nhà nước, ngoài cơ sở dữ liệu."
+  },
+  {
+    "id": "TEST_21",
+    "question": "Trình tự thu hồi giấy phép thăm dò khoáng sản làm vật liệu xây dựng thông thường?",
+    "type": "incorrect",
+    "expected_action": "INCORRECT",
+    "expected_source_ids": [],
+    "ground_truth": "Thuộc Luật Khoáng sản, ngoài cơ sở dữ liệu."
+  },
+  {
+    "id": "TEST_22",
+    "question": "Tiêu chuẩn vệ sinh thú y đối với cơ sở giết mổ gia súc tập trung?",
+    "type": "incorrect",
+    "expected_action": "INCORRECT",
+    "expected_source_ids": [],
+    "ground_truth": "Thuộc Luật Thú y, ngoài cơ sở dữ liệu."
+  },
+  {
+    "id": "TEST_23",
+    "question": "Doanh nghiệp có vốn đầu tư nước ngoài thuê giám đốc điều hành là người nước ngoài thì chế độ bảo hiểm xã hội bắt buộc áp dụng thế nào?",
+    "type": "ambiguous",
+    "expected_action": "AMBIGUOUS",
+    "expected_source_ids": ["DOC_41_2024_QH15_D2"],
+    "ground_truth": "Luật BHXH quy định điều kiện tham gia của người lao động nước ngoài, nghị định hướng dẫn chi tiết cần bổ sung qua tìm kiếm ngoài."
+  },
+  {
+    "id": "TEST_24",
+    "question": "Trường hợp người lao động đồng thời giao kết hợp đồng với hai doanh nghiệp thì đóng bảo hiểm xã hội ở công ty nào?",
+    "type": "ambiguous",
+    "expected_action": "AMBIGUOUS",
+    "expected_source_ids": ["DOC_41_2024_QH15_D33"],
+    "ground_truth": "Luật quy định trách nhiệm đóng theo hợp đồng đầu tiên, việc đóng tai nạn lao động các hợp đồng tiếp theo cần bổ sung từ nguồn ngoài."
+  },
+  {
+    "id": "TEST_25",
+    "question": "Thủ tục xin cấp thẻ BHYT và xác nhận đóng BHXH đối với người lao động là người khuyết tật nặng tại doanh nghiệp?",
+    "type": "ambiguous",
+    "expected_action": "AMBIGUOUS",
+    "expected_source_ids": ["DOC_41_2024_QH15"],
+    "ground_truth": "Có một phần căn cứ về đối tượng trong luật, thủ tục biểu mẫu cần tra cứu bổ sung."
+  },
+  {
+    "id": "TEST_26",
+    "question": "Quy trình chuyển đổi từ bảo hiểm xã hội tự nguyện sang bảo hiểm xã hội bắt buộc khi người lao động bắt đầu ký hợp đồng?",
+    "type": "ambiguous",
+    "expected_action": "AMBIGUOUS",
+    "expected_source_ids": ["DOC_41_2024_QH15"],
+    "ground_truth": "Luật quy định nguyên tắc liên thông thời gian đóng, quy trình nghiệp vụ chi tiết cần đối chiếu quy định bổ trợ."
+  },
+  {
+    "id": "TEST_27",
+    "question": "Chế độ thai sản đối với trường hợp người mẹ chết sau khi sinh con hoặc người mẹ không đủ điều kiện hưởng nhưng người cha tham gia?",
+    "type": "ambiguous",
+    "expected_action": "AMBIGUOUS",
+    "expected_source_ids": ["DOC_41_2024_QH15_D55"],
+    "ground_truth": "Luật có quy định nhưng cần đối chiếu hồ sơ và văn bản hướng dẫn chi tiết."
+  },
+  {
+    "id": "TEST_28",
+    "question": "Mức tiền lương tối đa để làm căn cứ tính mức đóng bảo hiểm xã hội bắt buộc vào các quỹ?",
+    "type": "ambiguous",
+    "expected_action": "AMBIGUOUS",
+    "expected_source_ids": ["DOC_41_2024_QH15_D31"],
+    "ground_truth": "Luật quy định không quá 20 lần mức tham chiếu, mức tham chiếu cụ thể theo từng thời kỳ cần nguồn ngoài."
+  },
+  {
+    "id": "TEST_29",
+    "question": "Thời hạn nộp phạt và tính tiền lãi chậm đóng bảo hiểm xã hội bắt buộc của người sử dụng lao động?",
+    "type": "ambiguous",
+    "expected_action": "AMBIGUOUS",
+    "expected_source_ids": ["DOC_41_2024_QH15_D40"],
+    "ground_truth": "Luật quy định mức lãi suất 0.03%/ngày trên số tiền chậm đóng, chi tiết thủ tục hành chính cần bổ sung."
+  },
+  {
+    "id": "TEST_30",
+    "question": "Điều kiện ủy quyền nhận trợ cấp bảo hiểm xã hội một lần qua tài khoản ngân hàng của người khác?",
+    "type": "ambiguous",
+    "expected_action": "AMBIGUOUS",
+    "expected_source_ids": ["DOC_41_2024_QH15"],
+    "ground_truth": "Nguyên tắc chi trả qua tài khoản hoặc bưu điện có trong luật, quy định ủy quyền dân sự cần kết hợp."
+  },
+  {
+    "id": "TEST_31",
+    "question": "Văn bản số 41/2024/QH15 do cơ quan nào ban hành?",
+    "type": "database",
+    "expected_action": "DATABASE",
+    "expected_source_ids": ["DOC_41_2024_QH15"],
+    "ground_truth": "Luật Bảo hiểm xã hội số 41/2024/QH15 do Quốc hội ban hành."
+  },
+  {
+    "id": "TEST_32",
+    "question": "Văn bản số 41/2024/QH15 có trạng thái hiệu lực hiện tại như thế nào?",
+    "type": "database",
+    "expected_action": "DATABASE",
+    "expected_source_ids": ["DOC_41_2024_QH15"],
+    "ground_truth": "Luật Bảo hiểm xã hội số 41/2024/QH15 có trạng thái còn hiệu lực (effective)."
+  },
+  {
+    "id": "TEST_33",
+    "question": "Thời điểm có hiệu lực của văn bản số 41/2024/QH15 là ngày nào?",
+    "type": "database",
+    "expected_action": "DATABASE",
+    "expected_source_ids": ["DOC_41_2024_QH15"],
+    "ground_truth": "Có hiệu lực thi hành từ ngày 01/07/2025."
+  },
+  {
+    "id": "TEST_34",
+    "question": "Số hiệu chính xác của Luật Bảo hiểm xã hội được thông qua năm 2024?",
+    "type": "database",
+    "expected_action": "DATABASE",
+    "expected_source_ids": ["DOC_41_2024_QH15"],
+    "ground_truth": "Số hiệu: 41/2024/QH15."
+  },
+  {
+    "id": "TEST_35",
+    "question": "Loại văn bản của 41/2024/QH15 trong hệ thống văn bản pháp luật là gì?",
+    "type": "database",
+    "expected_action": "DATABASE",
+    "expected_source_ids": ["DOC_41_2024_QH15"],
+    "ground_truth": "Loại văn bản: Luật."
+  },
+  {
+    "id": "TEST_36",
+    "question": "Tại ngày 01/01/2024 thì Luật Bảo hiểm xã hội số 41/2024/QH15 đã có hiệu lực chưa?",
+    "type": "temporal",
+    "as_of_date": "2024-01-01",
+    "expected_action": "DATABASE",
+    "expected_source_ids": ["DOC_41_2024_QH15"],
+    "ground_truth": "Tại ngày 01/01/2024, Luật số 41/2024/QH15 chưa có hiệu lực (văn bản có hiệu lực từ ngày 01/07/2025)."
+  },
+  {
+    "id": "TEST_37",
+    "question": "Tại ngày 01/08/2025 thì Luật Bảo hiểm xã hội số 41/2024/QH15 đã phát sinh hiệu lực thi hành chưa?",
+    "type": "temporal",
+    "as_of_date": "2025-08-01",
+    "expected_action": "DATABASE",
+    "expected_source_ids": ["DOC_41_2024_QH15"],
+    "ground_truth": "Tại ngày 01/08/2025, Luật số 41/2024/QH15 đã có hiệu lực thi hành."
+  },
+  {
+    "id": "TEST_38",
+    "question": "Luật Bảo hiểm xã hội 2024 thay thế cho Luật Bảo hiểm xã hội 2014 kể từ thời điểm nào?",
+    "type": "temporal",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D140"],
+    "ground_truth": "Luật Bảo hiểm xã hội 2014 hết hiệu lực kể từ ngày Luật số 41/2024/QH15 có hiệu lực thi hành (01/07/2025)."
+  },
+  {
+    "id": "TEST_39",
+    "question": "Sổ bảo hiểm xã hội đã được cấp theo quy định của Luật Bảo hiểm xã hội 2014 có tiếp tục được sử dụng không?",
+    "type": "temporal",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D141"],
+    "ground_truth": "Sổ bảo hiểm xã hội đã cấp vẫn tiếp tục được sử dụng theo quy định chuyển tiếp của Luật 2024."
+  },
+  {
+    "id": "TEST_40",
+    "question": "Người đang hưởng lương hưu trước ngày 01/07/2025 có bị thay đổi mức hưởng khi Luật Bảo hiểm xã hội 2024 có hiệu lực không?",
+    "type": "temporal",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D141"],
+    "ground_truth": "Người đang hưởng lương hưu trước ngày luật có hiệu lực vẫn tiếp tục thực hiện theo quy định trước đó và được điều chỉnh lương hưu."
+  }
+]

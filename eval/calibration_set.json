@@ -1,0 +1,162 @@
+[
+  {
+    "id": "CALIB_01",
+    "question": "Đối tượng tham gia bảo hiểm xã hội bắt buộc theo quy định hiện hành bao gồm những ai?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D2"],
+    "ground_truth": "Người làm việc theo hợp đồng lao động không xác định thời hạn, hợp đồng lao động xác định thời hạn từ đủ 01 tháng trở lên..."
+  },
+  {
+    "id": "CALIB_02",
+    "question": "Hồ sơ đăng ký tham gia bảo hiểm xã hội bắt buộc gồm những giấy tờ gì?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D27"],
+    "ground_truth": "Tờ khai tham gia bảo hiểm xã hội của người sử dụng lao động kèm theo danh sách người lao động tham gia bảo hiểm xã hội..."
+  },
+  {
+    "id": "CALIB_03",
+    "question": "Mức bình quân thu nhập làm căn cứ đóng bảo hiểm xã hội tự nguyện được điều chỉnh như thế nào?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D104"],
+    "ground_truth": "Thu nhập tháng đã đóng bảo hiểm xã hội để làm căn cứ tính mức bình quân thu nhập làm căn cứ đóng bảo hiểm xã hội của người lao động được điều chỉnh trên cơ sở chỉ số giá tiêu dùng..."
+  },
+  {
+    "id": "CALIB_04",
+    "question": "Văn bản số 41/2024/QH15 còn hiệu lực hay không?",
+    "type": "database",
+    "expected_action": "DATABASE",
+    "expected_source_ids": ["DOC_41_2024_QH15"],
+    "ground_truth": "Luật Bảo hiểm xã hội số 41/2024/QH15 có hiệu lực từ ngày 01/07/2025 và hiện đang còn hiệu lực."
+  },
+  {
+    "id": "CALIB_05",
+    "question": "Quy định chi tiết về thuế nhập khẩu xe ô tô điện nguyên chiếc từ châu Âu năm 2026?",
+    "type": "incorrect",
+    "expected_action": "INCORRECT",
+    "expected_source_ids": [],
+    "ground_truth": "Nội dung nằm ngoài cơ sở dữ liệu nội bộ, cần kích hoạt tìm kiếm nguồn ngoài chính thống."
+  },
+  {
+    "id": "CALIB_06",
+    "question": "Mức đóng bảo hiểm xã hội bắt buộc của người lao động và người sử dụng lao động vào quỹ hưu trí và tử tuất?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D33"],
+    "ground_truth": "Người lao động đóng 8%, người sử dụng lao động đóng 14% tiền lương làm căn cứ đóng bảo hiểm xã hội vào quỹ hưu trí và tử tuất."
+  },
+  {
+    "id": "CALIB_07",
+    "question": "Quy chuẩn kỹ thuật quốc gia về trạm sạc xe điện ven đường cao tốc?",
+    "type": "incorrect",
+    "expected_action": "INCORRECT",
+    "expected_source_ids": [],
+    "ground_truth": "Văn bản chuyên ngành giao thông không thuộc phạm vi cơ sở dữ liệu, kích hoạt tìm kiếm ngoài."
+  },
+  {
+    "id": "CALIB_08",
+    "question": "Điều kiện hưởng trợ cấp hưu trí xã hội theo Luật Bảo hiểm xã hội 2024?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D21"],
+    "ground_truth": "Công dân Việt Nam từ đủ 75 tuổi trở lên không có lương hưu hoặc trợ cấp bảo hiểm xã hội hàng tháng..."
+  },
+  {
+    "id": "CALIB_09",
+    "question": "Trường hợp tạm hoãn hợp đồng lao động có phải đóng bảo hiểm xã hội không và thủ tục khôi phục?",
+    "type": "ambiguous",
+    "expected_action": "AMBIGUOUS",
+    "expected_source_ids": ["DOC_41_2024_QH15"],
+    "ground_truth": "Corpus có quy định về không hưởng lương thì không đóng bảo hiểm xã hội nhưng thủ tục chi tiết cần tra cứu mở rộng."
+  },
+  {
+    "id": "CALIB_10",
+    "question": "Trách nhiệm của cơ quan bảo hiểm xã hội trong việc xác nhận thời gian đóng bảo hiểm xã hội?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D12"],
+    "ground_truth": "Cung cấp chính xác, đầy đủ, kịp thời thông tin, tài liệu liên quan đến việc đóng, hưởng bảo hiểm xã hội..."
+  },
+  {
+    "id": "CALIB_11",
+    "question": "Mẫu biểu số 05a về đăng ký kiểm dịch động vật trên cạn?",
+    "type": "incorrect",
+    "expected_action": "INCORRECT",
+    "expected_source_ids": [],
+    "ground_truth": "Không có trong cơ sở dữ liệu nội bộ."
+  },
+  {
+    "id": "CALIB_12",
+    "question": "Quy định về thời gian nghỉ việc hưởng chế độ thai sản khi sinh con?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D53"],
+    "ground_truth": "Lao động nữ sinh con được nghỉ việc hưởng chế độ thai sản trước và sau khi sinh con là 06 tháng..."
+  },
+  {
+    "id": "CALIB_13",
+    "question": "Hồ sơ hưởng chế độ thai sản đối với lao động nữ sinh con gồm những giấy tờ gì?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D61"],
+    "ground_truth": "Bản sao giấy khai sinh hoặc trích lục khai sinh hoặc bản sao giấy chứng sinh của con..."
+  },
+  {
+    "id": "CALIB_14",
+    "question": "Chế độ bảo hiểm tai nạn lao động cho người làm việc theo hợp đồng dịch vụ không trọn thời gian?",
+    "type": "ambiguous",
+    "expected_action": "AMBIGUOUS",
+    "expected_source_ids": ["DOC_41_2024_QH15"],
+    "ground_truth": "Cần kết hợp quy định chung của Luật BHXH và hướng dẫn thi hành ngoài web."
+  },
+  {
+    "id": "CALIB_15",
+    "question": "Mức tiền phạt đối với hành vi trốn đóng bảo hiểm xã hội bắt buộc theo nghị định xử phạt mới nhất?",
+    "type": "ambiguous",
+    "expected_action": "AMBIGUOUS",
+    "expected_source_ids": ["DOC_41_2024_QH15"],
+    "ground_truth": "Luật quy định hành vi bị nghiêm cấm, mức xử phạt hành chính cụ thể cần bổ sung qua tìm kiếm ngoài."
+  },
+  {
+    "id": "CALIB_16",
+    "question": "Thời gian giải quyết chế độ ốm đau của cơ quan bảo hiểm xã hội là bao nhiêu ngày?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D51"],
+    "ground_truth": "Trong thời hạn 07 ngày làm việc kể từ ngày nhận đủ hồ sơ từ người sử dụng lao động..."
+  },
+  {
+    "id": "CALIB_17",
+    "question": "Quy định về định giá chuyển nhượng bất động sản công nghiệp cho thuê lại tại khu kinh tế?",
+    "type": "incorrect",
+    "expected_action": "INCORRECT",
+    "expected_source_ids": [],
+    "ground_truth": "Không thuộc phạm vi corpus nội bộ."
+  },
+  {
+    "id": "CALIB_18",
+    "question": "Văn bản số 41/2024/QH15 có hiệu lực từ ngày nào?",
+    "type": "database",
+    "expected_action": "DATABASE",
+    "expected_source_ids": ["DOC_41_2024_QH15"],
+    "ground_truth": "Luật Bảo hiểm xã hội số 41/2024/QH15 có hiệu lực thi hành từ ngày 01 tháng 07 năm 2025."
+  },
+  {
+    "id": "CALIB_19",
+    "question": "Người hoạt động không chuyên trách ở cấp xã có thuộc đối tượng tham gia bảo hiểm xã hội bắt buộc không?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D2"],
+    "ground_truth": "Có thuộc đối tượng tham gia bảo hiểm xã hội bắt buộc theo quy định tại điểm k khoản 1 Điều 2."
+  },
+  {
+    "id": "CALIB_20",
+    "question": "Mức trợ cấp mai táng đối với người lao động tham gia bảo hiểm xã hội bắt buộc?",
+    "type": "correct",
+    "expected_action": "CORRECT",
+    "expected_source_ids": ["DOC_41_2024_QH15_D78"],
+    "ground_truth": "Trợ cấp mai táng bằng 10 lần mức tham chiếu tại tháng mà người lao động chết."
+  }
+]

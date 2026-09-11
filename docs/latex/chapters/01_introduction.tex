@@ -1,0 +1,55 @@
+% !TEX root = ../main.tex
+\chapter{Xác định Phạm vi và Mục tiêu Đề tài}
+
+\begin{calloutbox}{Nguyên tắc cốt lõi của Bản V3}
+\textbf{CRAG Core phải chạy và được đánh giá trước.} Next.js frontend và Semantic Memory là phần mở rộng kiến trúc; memory được liên kết chặt chẽ theo cặp ẩn danh \texttt{client\_id / session\_id} và \textbf{tuyệt đối không được dùng như một nguồn căn cứ pháp lý}.
+\end{calloutbox}
+
+\section{Tên Đề tài và Mục tiêu Nghiên cứu}
+
+\textbf{Tên đề tài đề xuất:} \textit{AI Agent hỗ trợ tra cứu pháp lý doanh nghiệp Việt Nam với cơ chế tự hiệu chỉnh truy hồi dựa trên Corrective RAG (CRAG).}
+
+Đề tài tập trung xây dựng một hệ thống AI Agent chuyên sâu có khả năng:
+\begin{enumerate}
+    \item Tra cứu văn bản quy phạm pháp luật với độ chính xác cao.
+    \item Tự động đánh giá chất lượng bằng chứng (\textit{evidence evaluation}) được truy hồi từ corpus nội bộ thông qua mô hình chấm điểm độc lập.
+    \item Tự động quyết định và kích hoạt các hành động hiệu chỉnh thích ứng (\textit{Corrective Actions}): tinh lọc tri thức nội bộ (\textit{Knowledge Refinement}), viết lại truy vấn (\textit{Query Rewrite}) và tìm kiếm nguồn mở rộng có kiểm soát (\textit{Controlled Web Search}) khi dữ liệu nội bộ không đáp ứng.
+    \item Chỉ sinh câu trả lời khi có bằng chứng pháp lý rõ ràng được đối chiếu thông qua cơ chế kiểm định trích dẫn (\textit{Citation Validation}).
+\end{enumerate}
+
+\begin{keypoint}
+\textbf{Mục tiêu trọng tâm:} Không phải xây dựng một chatbot trả lời chung chung mọi câu hỏi pháp luật, mà là thiết kế, hiện thực và đánh giá một \textbf{pipeline Corrective RAG có thể quan sát, đo lường được và giải thích được}.
+\end{keypoint}
+
+\section{Phạm vi Khuyến nghị}
+
+Để đảm bảo tính khả thi trong việc xây dựng ground-truth thủ công đạt chuẩn học thuật mà vẫn giữ được tính đa dạng của bài toán pháp lý phức tạp, phạm vi hệ sinh thái tri thức được giới hạn trong hai lĩnh vực trọng tâm:
+\begin{itemize}
+    \item \textbf{Đăng ký doanh nghiệp:} Điều kiện thành lập, hồ sơ, trình tự, thủ tục hành chính, cơ quan tiếp nhận và thẩm quyền xử lý, tra cứu tình trạng hiệu lực văn bản (Luật Doanh nghiệp 2020 và các Nghị định hướng dẫn liên quan).
+    \item \textbf{Pháp luật lao động:} Hợp đồng lao động, thời hạn, quyền và nghĩa vụ các bên, thủ tục chấm dứt hợp đồng, trách nhiệm pháp lý của người sử dụng lao động (Bộ luật Lao động 2019 và văn bản liên quan).
+    \item \textbf{Giới hạn phạm vi:} Không mở rộng sang toàn bộ hệ thống thuế, bảo hiểm xã hội, an toàn vệ sinh lao động trong giai đoạn đầu nhằm đảm bảo chất lượng kiểm tra ground-truth.
+\end{itemize}
+
+\section{Hệ thống Câu hỏi Mẫu cần Xử lý}
+
+Hệ thống được thiết kế để vượt qua các tình huống kiểm thử đại diện:
+\begin{enumerate}
+    \item \textbf{Tra cứu quy định hiện hành:} \textit{“Điều kiện thành lập công ty TNHH theo quy định hiện hành là gì?”}
+    \item \textbf{Tra cứu trạng thái hiệu lực lịch sử/hiện tại:} \textit{“Văn bản số X còn hiệu lực tại ngày Y hay không?”}
+    \item \textbf{Tra cứu chi tiết điều khoản:} \textit{“Quy định hiện hành về hợp đồng lao động xác định thời hạn bao gồm những nội dung bắt buộc nào?”}
+    \item \textbf{Nhận biết thiếu hụt tri thức (Out-of-corpus):} Khi kho dữ liệu nội bộ chưa cập nhật một nghị định mới sửa đổi, Agent phải nhận diện được sự thiếu hụt bằng chứng và kích hoạt tìm kiếm nguồn mở rộng chính thống.
+    \item \textbf{Xung đột văn bản pháp lý:} Hai nguồn đưa ra quy định khác nhau; Agent phải phân tích, phát hiện xung đột và ưu tiên áp dụng văn bản có thứ bậc pháp lý cao hơn hoặc còn hiệu lực tại thời điểm tra cứu.
+    \item \textbf{Xử lý hội thoại có ngữ cảnh (Multi-turn Context):} Người dùng hỏi câu hỏi tiếp diễn có đại từ: \textit{“Vậy đối với trường hợp công ty tôi thì cần lưu ý gì?”} -- Agent sử dụng memory để giải tham chiếu thực thể nhưng vẫn bắt buộc truy hồi lại căn cứ pháp luật hiện hành.
+\end{enumerate}
+
+\section{Câu hỏi Nghiên cứu \& Thực nghiệm}
+
+\begin{infobox}{5 Câu hỏi Nghiên cứu Trọng tâm}
+\begin{itemize}
+    \item \textbf{RQ1:} Liệu Corrective RAG có giảm thiểu đáng kể lỗi ảo giác do truy hồi kém chất lượng so với Traditional RAG hay không?
+    \item \textbf{RQ2:} Retrieval Evaluator với mô hình Cross-Encoder có phân loại chính xác ba nhánh Correct / Ambiguous / Incorrect hay không?
+    \item \textbf{RQ3:} Cơ chế Hybrid Retrieval (BGE-M3 Dense + BM25 Lexical + Reranker) cải thiện Recall@K và MRR như thế nào so với Dense-only retrieval?
+    \item \textbf{RQ4:} Sự cải thiện vượt trội của CRAG thực sự đến từ cơ chế hiệu chỉnh tri thức hay chỉ đơn thuần nhờ được bổ sung thêm nguồn Web Search bên ngoài?
+    \item \textbf{RQ5:} Semantic Memory và Session History có hỗ trợ ngữ cảnh hội thoại nhiều lượt mà không làm giảm độ tin cậy (faithfulness) hay làm rò rỉ dữ liệu giữa các phiên (\textit{cross-client contamination})?
+\end{itemize}
+\end{infobox}
