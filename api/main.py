@@ -105,8 +105,9 @@ def chat_endpoint(req: ChatRequest) -> ChatResponse:
         "memory_context": memory_context,
     }
 
+    config = {"configurable": {"thread_id": session_id}}
     try:
-        res = graph_app.invoke(state_input)
+        res = graph_app.invoke(state_input, config=config)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Agent execution failed: {str(e)}")
 

@@ -8,7 +8,7 @@ from pathlib import Path
 # Ensure project root is in sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agent.graph import get_crag_app
+from agent.graph import get_crag_app, invoke_crag
 from config import CALIBRATION_SET_PATH, TEST_SET_PATH
 from eval.metrics import (
     compute_action_f1,
@@ -117,7 +117,7 @@ def run_test_benchmark(
         as_of_date = s.get("as_of_date")
 
         # Run through LangGraph
-        res = app.invoke({"query": q, "as_of_date": as_of_date})
+        res = invoke_crag(query=q, as_of_date=as_of_date, session_id=f"eval_thread_{idx}")
 
         route = res.get("route")
         pred_act = "DATABASE" if route == "database" else res.get("crag_action", "AMBIGUOUS")

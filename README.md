@@ -12,60 +12,14 @@ Hệ thống được thiết kế theo **Kiến trúc 3 Layer Tách biệt**:
 - **Layer 1 — Interface & API:** Giao diện dòng lệnh chuyên nghiệp (CLI) và hạ tầng RESTful API (FastAPI) hỗ trợ trả lời, bảng trích dẫn citation xác định, quản lý phiên và hồ sơ client.
 - **Layer 2 — Agent & Correction:** Đồ thị trạng thái **LangGraph** điều phối toàn bộ workflow: Router phân luồng, Retrieval Evaluator chấm điểm relevance chuẩn hóa Sigmoid, 3 nhánh xử lý CRAG cốt lõi, Generator và Citation Validator.
 - **Layer 3 — Knowledge & Data:** SQLite (`app.db`) quản lý metadata văn bản và memory; ChromaDB quản lý Dense Vector Index; rank-bm25 quản lý Lexical Index; Reranker tính relevance; Controlled Web Search lọc tên miền công quyền chính thống.
+![Sơ đồ Toàn diện Luồng Hoạt động Legal CRAG Assistant V3](docs/images/workflow.png)
 
-```
-                      [User Query]
-                           │
-                           ▼
-                    ┌──────────────┐
-                    │    Router    │
-                    └───┬──────┬───┘
-     "database" ┌───────┘      └───────┐ "rag"
-                ▼                      ▼
-        ┌──────────────┐      ┌──────────────────┐
-        │   query_db   │      │ hybrid_retrieve  │ (Dense + BM25 + RRF)
-        └───────┬──────┘      └────────┬─────────┘
-                │                      ▼
-                │             ┌──────────────────┐
-                │             │ evaluate_retrieval│ (Cross-Encoder Sigmoid)
-                │             └────────┬─────────┘
-                │                      │
-                │        ┌─────────────┼─────────────┐
-                │        ▼             ▼             ▼
-                │    [CORRECT]    [AMBIGUOUS]   [INCORRECT]
-                │        │             │             │
-                │        ▼             ▼             ▼
-                │   ┌─────────┐   ┌─────────┐   ┌─────────┐
-                │   │ refine  │   │ refine  │   │ rewrite │
-                │   └────┬────┘   └────┬────┘   └────┬────┘
-                │        │             ▼             ▼
-                │        │        ┌─────────┐   ┌─────────┐
-                │        │        │ rewrite │   │   web   │ (Controlled Web)
-                │        │        └────┬────┘   └────┬────┘
-                │        │             ▼             ▼
-                │        │        ┌─────────┐   ┌─────────┐
-                │        │        │   web   │   │select_w │
-                │        │        └────┬────┘   └────┬────┘
-                │        │             ▼             │
-                │        │        ┌─────────┐        │
-                │        │        │select_w │        │
-                │        │        └────┬────┘        │
-                │        │             ▼             │
-                │        │        ┌─────────┐        │
-                │        │        │  merge  │        │
-                │        │        └────┬────┘        │
-                │        └───────┬─────┴─────────────┘
-                │                ▼
-                │       ┌──────────────────┐
-                │       │ generate_answer  │ (Strict JSON Schema + Citations)
-                │       └────────┬─────────┘
-                │                ▼
-                └───────────────►┌──────────────────┐
-                                 │  cite_validate   │ (Deterministic Validation)
-                                 └────────┬─────────┘
-                                          ▼
-                                       [ END ]
-```
+Hệ thống tuân thủ toàn diện các nguyên lý chuẩn của **[LangGraph Overview](https://docs.langchain.com/oss/python/langgraph/overview)**:
+- **State Schema (`AgentState`):** Shared scratchpad truyền dữ liệu giữa các node dạng TypedDict.
+- **Ranh giới Formal Graph:** Điểm vào từ `START` và kết thúc tại `END`.
+- **Node Functions:** 11 node biến đổi trạng thái độc lập (`agent/nodes.py`).
+- **Conditional Edges:** Rẽ nhánh Router và 3 nhánh tự hiệu chỉnh CRAG (Correct, Ambiguous, Incorrect).
+- **Persistence Checkpointing:** Tích hợp `MemorySaver` lưu vết hội thoại đa lượt qua `thread_id`.
 
 ---
 

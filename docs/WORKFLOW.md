@@ -4,7 +4,26 @@
 
 ---
 
-## 1. Sơ đồ Luồng Hoạt động Toàn diện (Unified Architecture Workflow)
+## MỤC LỤC
+
+1. [Tổng quan Kiến trúc 3 Layer](#1-tổng-quan-kiến-trúc-3-layer)
+2. [Sơ đồ Luồng Hoạt động Toàn diện (Unified Workflow)](#2-sơ-đồ-luồng-hoạt-động-toàn-diện-unified-workflow)
+3. [Thiết kế Chuẩn theo LangGraph Overview](#3-thiết-kế-chuẩn-theo-langgraph-overview)
+4. [Thuyết minh Chi tiết Các Giai đoạn Xử lý](#4-thuyết-minh-chi-tiết-các-giai-đoạn-xử-lý)
+5. [Lệnh Tự động Render Lại Hình ảnh Sơ đồ](#5-lệnh-tự-động-render-lại-hình-ảnh-sơ-đồ)
+
+---
+
+## 1. Tổng quan Kiến trúc 3 Layer
+
+Hệ thống Legal CRAG Assistant V3 tuân thủ nghiêm ngặt nguyên lý phân định ranh giới trách nhiệm (*Separation of Concerns*) giữa 3 tầng chức năng:
+- **Layer 1 — Interface & API:** Tiếp nhận yêu cầu từ người dùng qua CLI hoặc FastAPI Gateway (`/api/chat`).
+- **Layer 2 — Agent & Correction:** Đồ thị trạng thái **LangGraph** điều phối toàn bộ workflow thông minh.
+- **Layer 3 — Knowledge & Data:** SQLite (`app.db`), ChromaDB Vector Store, rank-bm25, và Cổng thông tin pháp luật chính thống.
+
+---
+
+## 2. Sơ đồ Luồng Hoạt động Toàn diện (Unified Workflow)
 
 Toàn bộ quy trình từ lúc tiếp nhận câu hỏi của người dùng, phân luồng điều hướng, truy hồi lai, đánh giá bằng chứng 3 nhánh CRAG, kiểm định trích dẫn đến khi trả về câu trả lời hoàn chỉnh được tích hợp thống nhất trên **một sơ đồ duy nhất**:
 
@@ -12,7 +31,58 @@ Toàn bộ quy trình từ lúc tiếp nhận câu hỏi của người dùng, p
 
 ---
 
-## 2. Thuyết minh Các Giai đoạn Xử lý trong Luồng
+## 3. Thiết kế Chuẩn theo LangGraph Overview
+
+Kiến trúc tác tử của hệ thống được hiện thực 100% dựa trên các nguyên lý cốt lõi của **[LangGraph Overview Documentation](https://docs.langchain.com/oss/python/langgraph/overview)**:
+
+### 3.1. Sơ đồ Trạng thái (State Schema — `AgentState`)
+Theo chuẩn LangGraph, State đóng vai trò là kênh dữ liệu trung tâm (*Shared Scratchpad*):
+- Định nghĩa tại `agent/state.py` dưới dạng `TypedDict` có cấu trúc.
+- Lưu trữ trạng thái ngữ cảnh (`client_id`, `session_id`, `query`, `as_of_date`, `memory_context`), ứng viên truy hồi (`candidates`), điểm relevance, hành động CRAG (`crag_action`), danh mục bằng chứng (`evidence`), câu trả lời sinh ra (`generation`) và báo cáo trích dẫn (`citation_report`).
+
+### 3.2. Ranh giới Đồ thị Chính thức (`START` và `END`)
+Tuân thủ chuẩn LangGraph mới nhất, đồ thị sử dụng các nút ranh giới chính thức:
+- `from langgraph.graph import START, END, StateGraph`
+- Điểm vào: `g.add_edge(START, "router")`
+- Điểm kết thúc: `g.add_edge("cite_validate", END)`
+
+### 3.3. Các Node Biến đổi Độc lập (Pure Node Functions)
+Cài đặt tại `agent/nodes.py`, mỗi node là một hàm Python nhận `(state: AgentState)` và trả về dictionary cập nhật trạng thái mà không làm thay đổi các trường dữ liệu khác:
+- `route_question`: Router phân loại câu hỏi (`database`, `rag`, `general`).
+- `query_db`: Truy vấn dữ liệu có cấu trúc SQLite.
+- `hybrid_retrieve`: Truy hồi lai Dense + Lexical BM25 + RRF Fusion.
+- `evaluate_retrieval`: Cross-Encoder Reranker chấm điểm relevance Sigmoid $[0, 1]$.
+- `refine_internal_node`: Tinh lọc tri thức nội bộ thành các legal strips.
+- `rewrite_query_node`: Viết lại câu truy vấn tìm kiếm chuyên sâu.
+- `web_search_node`: Tìm kiếm nguồn web công quyền cho phép.
+- `select_external_node`: Bóc tách và chọn lọc bằng chứng từ web.
+- `merge_evidence_node`: Hợp nhất bằng chứng đa nguồn theo thứ tự ưu tiên.
+- `generate_answer`: Sinh câu trả lời theo khuôn mẫu JSON nghiêm ngặt.
+- `validate_citations_node`: Kiểm tra tính xác thực và hiệu lực thời gian của trích dẫn.
+
+### 3.4. Các Cạnh Điều Kiện (Conditional Edges & 3-Branch CRAG)
+Cài đặt tại `agent/graph.py` điều khiển luồng rẽ nhánh linh hoạt:
+- Rẽ nhánh Router: `router` $\to$ `{"database": "db", "rag": "retrieve", "general": "generate"}`.
+- Rẽ 3 nhánh CRAG sau Evaluator: `evaluate` $\to$ `{"CORRECT": "refine", "AMBIGUOUS": "refine", "INCORRECT": "rewrite"}`.
+- Rẽ nhánh sau Refinement: `refine` $\to$ `{"generate": "generate", "rewrite": "rewrite"}`.
+- Rẽ nhánh sau Web Selection: `select_web` $\to$ `{"merge": "merge", "generate": "generate"}`.
+
+### 3.5. Cơ chế Lưu vết & Trí nhớ Phiên (Persistence & Checkpointing)
+Hệ thống biên dịch đồ thị với **Checkpointer** chính thức của LangGraph:
+```python
+from langgraph.checkpoint.memory import MemorySaver
+
+app = g.compile(checkpointer=MemorySaver())
+```
+Khi thực thi mỗi turn, hệ thống truyền định danh luồng hội thoại theo chuẩn LangGraph:
+```python
+config = {"configurable": {"thread_id": session_id}}
+result = app.invoke(state_input, config=config)
+```
+Cơ chế này đảm bảo đồ thị có khả năng duy trì trạng thái ngữ cảnh qua nhiều lượt tương tác (*multi-turn dialog*) và sẵn sàng hỗ trợ các tính năng cao cấp như Time-travel hoặc Human-in-the-loop.
+
+---
+## 4. Thuyết minh Các Giai đoạn Xử lý trong Luồng
 
 Quy trình hoạt động trên sơ đồ được chia thành 6 giai đoạn logic:
 
@@ -61,7 +131,7 @@ Phân tích ngữ nghĩa câu hỏi để chuyển nhánh tối ưu:
 
 ---
 
-## 3. Lệnh Tự động Render Lại Hình ảnh Sơ đồ
+## 5. Lệnh Tự động Render Lại Hình ảnh Sơ đồ
 
 Sơ đồ `docs/images/workflow.png` và `docs/images/workflow.svg` được tạo từ file định nghĩa `docs/workflow.mmd`.  
 Khi cần chỉnh sửa hoặc render lại ảnh với nền trắng chuẩn, chạy lệnh:

@@ -6,7 +6,7 @@ import json
 import sys
 from pathlib import Path
 
-from agent.graph import get_crag_app
+from agent.graph import get_crag_app, invoke_crag
 from legal.citations import validate_citations
 from memory.extractor import extract_and_save_memories
 from memory.store import get_memory_store
@@ -29,7 +29,7 @@ def run_demo_suite():
     print("#" * 80)
     q1 = "Đối tượng tham gia bảo hiểm xã hội bắt buộc theo quy định hiện hành bao gồm những ai?"
     print(f"Câu hỏi: '{q1}'")
-    res1 = app.invoke({"query": q1, "client_id": "demo_client"})
+    res1 = invoke_crag(q1, client_id="demo_client", session_id="demo_thread_1")
     print(f"-> Route:           {res1.get('route')}")
     print(f"-> CRAG Action:     {res1.get('crag_action')} (Expected: CORRECT)")
     print(f"-> Evidence Strips: {len(res1.get('evidence', []))}")
@@ -44,7 +44,7 @@ def run_demo_suite():
     print("#" * 80)
     q2 = "Thủ tục xin giấy phép bay cho phương tiện bay không người lái drone nông nghiệp?"
     print(f"Câu hỏi: '{q2}'")
-    res2 = app.invoke({"query": q2, "client_id": "demo_client"})
+    res2 = invoke_crag(q2, client_id="demo_client", session_id="demo_thread_2")
     print(f"-> Route:           {res2.get('route')}")
     print(f"-> CRAG Action:     {res2.get('crag_action')} (Expected: INCORRECT / AMBIGUOUS)")
     print(f"-> Rewritten Query: {res2.get('rewritten_query')}")
@@ -60,7 +60,7 @@ def run_demo_suite():
     print("#" * 80)
     q3 = "Doanh nghiệp có vốn đầu tư nước ngoài thuê giám đốc là người nước ngoài thì chế độ bảo hiểm xã hội áp dụng thế nào?"
     print(f"Câu hỏi: '{q3}'")
-    res3 = app.invoke({"query": q3, "client_id": "demo_client"})
+    res3 = invoke_crag(q3, client_id="demo_client", session_id="demo_thread_3")
     print(f"-> Route:           {res3.get('route')}")
     print(f"-> CRAG Action:     {res3.get('crag_action')}")
     print(f"-> Merged Evidence: {len(res3.get('evidence', []))}")
@@ -75,7 +75,7 @@ def run_demo_suite():
     print("#" * 80)
     q4 = "Văn bản số 41/2024/QH15 còn hiệu lực không?"
     print(f"Câu hỏi: '{q4}'")
-    res4 = app.invoke({"query": q4, "client_id": "demo_client"})
+    res4 = invoke_crag(q4, client_id="demo_client", session_id="demo_thread_4")
     print(f"-> Route:           {res4.get('route')} (Expected: database)")
     print(f"-> Answer:          {res4.get('generation', {}).get('answer')}")
     print(f"-> Citation Report: {res4.get('citation_report')}")
@@ -141,12 +141,12 @@ def interactive_cli():
             mem_ctx = store.format_memory_context(client_id)
 
             # Invoke Agent
-            res = app.invoke({
-                "query": query,
-                "client_id": client_id,
-                "session_id": session_id,
-                "memory_context": mem_ctx,
-            })
+            res = invoke_crag(
+                query=query,
+                client_id=client_id,
+                session_id=session_id,
+                memory_context=mem_ctx,
+            )
 
             route = res.get("route", "rag")
             action = res.get("crag_action", "DATABASE" if route == "database" else "CORRECT")
