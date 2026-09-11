@@ -10,7 +10,6 @@
 2. [Sơ đồ Luồng Hoạt động Toàn diện (Unified Workflow)](#2-sơ-đồ-luồng-hoạt-động-toàn-diện-unified-workflow)
 3. [Thiết kế Chuẩn theo LangGraph Overview](#3-thiết-kế-chuẩn-theo-langgraph-overview)
 4. [Thuyết minh Chi tiết Các Giai đoạn Xử lý](#4-thuyết-minh-chi-tiết-các-giai-đoạn-xử-lý)
-5. [Lệnh Tự động Render Lại Hình ảnh Sơ đồ](#5-lệnh-tự-động-render-lại-hình-ảnh-sơ-đồ)
 
 ---
 
@@ -129,13 +128,3 @@ Phân tích ngữ nghĩa câu hỏi để chuyển nhánh tối ưu:
    - Kiểm tra hiệu lực thời gian: Đối chiếu ngày tham chiếu `as_of_date` với ngày hết hiệu lực của văn bản.
    - Nếu phát hiện vi phạm hoặc nguồn bịa đặt: Lập tức chặn câu trả lời hoặc phát cảnh báo trích dẫn sai.
 
----
-
-## 5. Lệnh Tự động Render Lại Hình ảnh Sơ đồ
-
-Sơ đồ `docs/images/workflow.png` và `docs/images/workflow.svg` được tạo từ file định nghĩa `docs/workflow.mmd`.  
-Khi cần chỉnh sửa hoặc render lại ảnh với nền trắng chuẩn, chạy lệnh:
-
-```bash
-.venv/bin/python scripts/render_mermaid.py docs/workflow.mmd --output-dir docs/images
-```

@@ -74,12 +74,14 @@ cp .env.example .env
 # ==============================================================================
 LLM_PROVIDER=groq
 
-# Model tương ứng:
-# - Groq: "llama-3.3-70b-versatile" (siêu tốc <1s/turn)
+# Model tương ứng (danh mục Groq Free Plan cập nhật 2026-09-11):
+# - Groq: "qwen/qwen3.8-27b" (khuyến nghị: reasoning, coding, học thuật, tool use, JSON mode),
+#   "openai/gpt-oss-120b" (heavy cloud: reasoning mạnh hơn + web/browser/code tools tích hợp),
+#   "qwen/qwen3.6-27b", "openai/gpt-oss-20b", "groq/compound" (agent: web search + code execution)
 # - OpenAI: "gpt-4o-mini", "gpt-4o"
 # - OpenRouter: "deepseek/deepseek-chat", "qwen/qwen-2.5-72b-instruct"
-# - Ollama: "qwen2.5:14b-instruct" (local air-gapped)
-LLM_MODEL=llama-3.3-70b-versatile
+# - Ollama: "qwen3.8:latest" (local fallback tương ứng qwen/qwen3.8-27b), "qwen2.5:14b-instruct"
+LLM_MODEL=qwen/qwen3.8-27b
 LLM_TEMPERATURE=0.0
 
 # API Keys (điền key của bạn nếu sử dụng cloud provider)

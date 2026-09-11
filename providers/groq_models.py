@@ -1,7 +1,11 @@
 """Dynamic Groq Model Discovery and Free Model Resolver.
 
 Fetches live available models from Groq API, filters active free-tier models,
-and prioritizes Qwen models (e.g. Qwen 2.5 32B, QwQ 32B) as requested.
+and prioritizes Qwen 3.8 27B (qwen/qwen3.8-27b) as the primary reasoning/coding
+model, per Groq's Free Plan catalog effective 2026-09-11. Older models such as
+llama-3.1-8b-instant, llama-3.3-70b-versatile, qwen-2.5-32b and qwen-qwq-32b
+were deprecated from Groq's free/developer tier in Jul-Aug 2026 and are no
+longer requested.
 """
 from __future__ import annotations
 
@@ -12,15 +16,30 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# Known free-tier models on Groq in preference order
+# Current Groq Free Plan catalog (2026-09-11), in preference order.
+# qwen/qwen3.8-27b is primary: reasoning, coding, academic work, tool use,
+# JSON mode and remote MCP support, with local Ollama qwen3.8:latest as its
+# natural offline counterpart.
 DEFAULT_FREE_MODELS_FALLBACK: List[str] = [
+    "qwen/qwen3.8-27b",          # Primary: reasoning, coding, academic (30 RPM / 1,000 RPD / 200K tok/day)
+    "openai/gpt-oss-120b",       # Heavy cloud fallback: strong reasoning + built-in web/browser/code tools
+    "qwen/qwen3.6-27b",          # Coding, agent, tool calling
+    "openai/gpt-oss-20b",        # Faster, lighter than gpt-oss-120b
+    "groq/compound",             # Agent: web search + code execution baked in
+    "groq/compound-mini",        # Lighter agent variant
+]
+
+# Models retired from Groq's free/developer tier (Jul-Aug 2026); never requested.
+DEPRECATED_MODELS: frozenset[str] = frozenset({
+    "llama-3.1-8b-instant",
+    "llama-3.3-70b-versatile",
     "qwen-2.5-32b",
     "qwen-qwq-32b",
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
+    "qwen/qwen3-32b",
+    "llama-4-scout",
     "gemma2-9b-it",
     "mixtral-8x7b-32768",
-]
+})
 
 _CACHED_MODELS: Optional[List[Dict[str, Any]]] = None
 _CACHE_TIMESTAMP: float = 0.0
@@ -66,7 +85,7 @@ def fetch_groq_models(api_key: Optional[str] = None, force_refresh: bool = False
             owned_by = getattr(m, "owned_by", "")
             context_window = getattr(m, "context_window", 8192)
 
-            if model_id and active:
+            if model_id and active and model_id not in DEPRECATED_MODELS:
                 models.append({
                     "id": model_id,
                     "active": active,
@@ -84,7 +103,7 @@ def fetch_groq_models(api_key: Optional[str] = None, force_refresh: bool = False
 
 
 def list_groq_free_models(api_key: Optional[str] = None) -> List[str]:
-    """Return a list of available active free model IDs on Groq."""
+    """Return a list of available active free model IDs on Groq (deprecated models excluded)."""
     live_models = fetch_groq_models(api_key=api_key)
     if live_models:
         return [m["id"] for m in live_models]
@@ -99,18 +118,20 @@ def resolve_groq_model(
     """Dynamically resolve and select the best available free model on Groq.
 
     Priority logic:
-    1. If a specific model name is explicitly given (and not 'auto' / 'free' / 'qwen'), use it.
-    2. Otherwise, query live Groq models.
-    3. Filter for active models matching preferred_family ('qwen' -> qwen-2.5-32b, qwen-qwq, etc.).
-    4. If found, return the top matching Qwen model.
-    5. If no Qwen model is available on Groq, fall back to Llama 3.3 70B or Llama 3.1 8B.
+    1. If a specific, non-generic model name is given, use it as-is (unless deprecated,
+       in which case it is remapped to the current primary free model).
+    2. Otherwise, query live Groq models (cached) and rank them by DEFAULT_FREE_MODELS_FALLBACK
+       preference order, so "qwen/qwen3.8-27b" wins over any other Qwen/GPT-OSS variant.
+    3. If live discovery is unavailable (no API key / network), fall back to the static
+       DEFAULT_FREE_MODELS_FALLBACK list, still headed by "qwen/qwen3.8-27b".
 
     Parameters
     ----------
     requested_model : str, optional
-        Explicit model name or auto-selection trigger ('auto', 'free', 'qwen').
+        Explicit model name or auto-selection trigger ('auto', 'free', 'qwen', 'default').
     preferred_family : str
-        Target model family to prioritize (default: 'qwen').
+        Target model family substring to prioritize when no exact fallback match exists
+        (default: 'qwen').
     api_key : str, optional
         Groq API key.
 
@@ -121,29 +142,24 @@ def resolve_groq_model(
     """
     req = (requested_model or os.getenv("LLM_MODEL", "")).strip()
 
-    # If user provided a specific non-generic model, check if it's not a generic alias
     is_generic = req.lower() in ("", "auto", "free", "qwen", "default")
     if not is_generic and req:
-        return req
+        if req in DEPRECATED_MODELS:
+            logger.warning(f"Requested Groq model '{req}' was deprecated; using '{DEFAULT_FREE_MODELS_FALLBACK[0]}' instead.")
+        else:
+            return req
 
-    # Fetch live available models from Groq
     available_models = list_groq_free_models(api_key=api_key)
 
-    # 1. Search for Qwen family models
-    if preferred_family.lower() == "qwen":
-        for m_id in available_models:
-            if "qwen" in m_id.lower():
-                return m_id
+    # 1. Prefer an exact match against the ranked fallback catalog (qwen/qwen3.8-27b first).
+    for candidate in DEFAULT_FREE_MODELS_FALLBACK:
+        if candidate in available_models:
+            return candidate
 
-    # 2. Search for preferred family
+    # 2. Loose substring match on the requested family (e.g. any remaining Qwen model).
     for m_id in available_models:
         if preferred_family.lower() in m_id.lower():
             return m_id
 
-    # 3. Fallback to top available models in priority order
-    for fallback in DEFAULT_FREE_MODELS_FALLBACK:
-        if fallback in available_models:
-            return fallback
-
-    # Default safety fallback
-    return available_models[0] if available_models else "qwen-2.5-32b"
+    # 3. Default safety fallback.
+    return available_models[0] if available_models else DEFAULT_FREE_MODELS_FALLBACK[0]

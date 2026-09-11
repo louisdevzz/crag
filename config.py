@@ -22,16 +22,16 @@ class LLMConfig(BaseModel):
     openrouter_base_url: str = Field(default_factory=lambda: os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"))
     default_models: Dict[str, str] = Field(
         default_factory=lambda: {
-            "groq": "qwen-2.5-32b",
+            "groq": "qwen/qwen3.8-27b",
             "openai": "gpt-4o-mini",
             "openrouter": "deepseek/deepseek-chat",
-            "ollama": "qwen2.5:14b-instruct",
+            "ollama": "qwen3.8:latest",
         }
     )
 
     def model_post_init(self, __context):
         if not self.model:
-            self.model = os.getenv("LLM_MODEL", self.default_models.get(self.provider, "qwen-2.5-32b"))
+            self.model = os.getenv("LLM_MODEL", self.default_models.get(self.provider, "qwen/qwen3.8-27b"))
 
 
 class RetrievalConfig(BaseModel):
