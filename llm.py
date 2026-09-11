@@ -54,8 +54,10 @@ def get_chat_model(
             api_key = kwargs.pop("api_key", os.getenv("GROQ_API_KEY"))
             if not api_key:
                 return None
+            from providers.groq_models import resolve_groq_model
+            resolved_m = resolve_groq_model(requested_model=m, preferred_family="qwen", api_key=api_key)
             from langchain_groq import ChatGroq
-            return ChatGroq(model=m, temperature=t, api_key=api_key, **kwargs)
+            return ChatGroq(model=resolved_m, temperature=t, api_key=api_key, **kwargs)
 
         elif p == "openai":
             api_key = kwargs.pop("api_key", os.getenv("OPENAI_API_KEY"))
