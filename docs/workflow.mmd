@@ -1,51 +1,51 @@
 %%{init: {'theme': 'default', 'themeVariables': {'background': '#FFFFFF', 'fontFamily': 'sans-serif', 'fontSize': '14px'}}}%%
 flowchart TD
     %% TẦNG 1: NGƯỜI DÙNG & GIAO DIỆN
-    USER([👤 Người Dùng / Trình Duyệt]):::cUser -->|Gửi câu hỏi + client_id| API[⚡ Cổng API Gateway / FastAPI]:::cApi
+    USER([Người Dùng / Trình Duyệt]):::cUser -->|Gửi câu hỏi + client_id| API[Cổng API Gateway / FastAPI]:::cApi
 
     %% TẦNG MEMORY
-    API <-->|Đọc & Lưu bối cảnh doanh nghiệp| MEM[(🧠 Bộ Nhớ Phiên<br/>Session Memory)]:::cMem
-    API -->|Chuyển câu hỏi + bối cảnh| ROUTER{🧭 Bộ Điều Hướng<br/>Query Router}:::cRouter
+    API <-->|Đọc & Lưu bối cảnh doanh nghiệp| MEM[(Bộ Nhớ Phiên<br/>Session Memory)]:::cMem
+    API -->|Chuyển câu hỏi + bối cảnh| ROUTER{Bộ Điều Hướng<br/>Query Router}:::cRouter
 
     %% PHÂN LUỒNG ROUTER
-    ROUTER -->|Tra cứu số hiệu, hiệu lực| DB[🗄️ Công Cụ CSDL<br/>SQLite Database]:::cDb
-    ROUTER -->|Tra cứu quy định pháp luật| RETRIEVE[🔍 Truy Hồi Lai<br/>Dense Chroma + BM25]:::cRetrieve
+    ROUTER -->|Tra cứu số hiệu, hiệu lực| DB[Công Cụ CSDL<br/>SQLite Database]:::cDb
+    ROUTER -->|Tra cứu quy định pháp luật| RETRIEVE[Truy Hồi Lai<br/>Dense Chroma + BM25]:::cRetrieve
 
     %% NHÁNH CSDL
     DB --> VALIDATE
 
     %% TRUY HỒI & ĐÁNH GIÁ
-    RETRIEVE --> RRF[⚡ Hợp Nhất Xếp Hạng<br/>RRF Fusion k=60]:::cRetrieve
-    RRF --> EVAL{⚖️ Đánh Giá Bằng Chứng<br/>Reranker Sigmoid}:::cEval
+    RETRIEVE --> RRF[Hợp Nhất Xếp Hạng<br/>RRF Fusion k=60]:::cRetrieve
+    RRF --> EVAL{Đánh Giá Bằng Chứng<br/>Reranker Sigmoid}:::cEval
 
     %% 3 NHÁNH CRAG
-    EVAL -->|Điểm >= 0.80| BR_CORRECT[🟢 ĐỦ BẰNG CHỨNG<br/>Nhánh Correct]:::cCorrect
-    EVAL -->|0.40 <= Điểm < 0.80| BR_AMB[🟡 MỘT PHẦN<br/>Nhánh Ambiguous]:::cAmb
-    EVAL -->|Điểm <= 0.40| BR_INC[🔴 THIẾU BẰNG CHỨNG<br/>Nhánh Incorrect]:::cInc
+    EVAL -->|Điểm >= 0.80| BR_CORRECT[ĐỦ BẰNG CHỨNG<br/>Nhánh Đúng]:::cCorrect
+    EVAL -->|0.40 <= Điểm < 0.80| BR_AMB[MỘT PHẦN BẰNG CHỨNG<br/>Nhánh Chưa Rõ]:::cAmb
+    EVAL -->|Điểm <= 0.40| BR_INC[THIẾU BẰNG CHỨNG<br/>Nhánh Sai]:::cInc
 
     %% XỬ LÝ NHÁNH CORRECT
-    BR_CORRECT --> REFINE[✂️ Tinh Lọc Điều Khoản<br/>Internal Legal Strips]:::cCorrect
+    BR_CORRECT --> REFINE[Tinh Lọc Điều Khoản<br/>Internal Legal Strips]:::cCorrect
     REFINE --> GEN
 
     %% XỬ LÝ NHÁNH AMBIGUOUS
-    BR_AMB --> REFINE_AMB[✂️ Tinh Lọc Nội Bộ]:::cAmb
-    BR_AMB --> REWRITE_AMB[✏️ Viết Lại Truy Vấn]:::cAmb
-    REWRITE_AMB --> WEB_AMB[🌐 Tìm Kiếm Web<br/>Cổng Thông Tin Nhà Nước]:::cAmb
-    WEB_AMB --> MERGE[🔗 Hợp Nhất Bằng Chứng<br/>Ưu Tiên Nguồn Nội Bộ]:::cAmb
+    BR_AMB --> REFINE_AMB[Tinh Lọc Nội Bộ]:::cAmb
+    BR_AMB --> REWRITE_AMB[Viết Lại Truy Vấn]:::cAmb
+    REWRITE_AMB --> WEB_AMB[Tìm Kiếm Nguồn Ngoài<br/>Cổng Thông Tin Nhà Nước]:::cAmb
+    WEB_AMB --> MERGE[Hợp Nhất Bằng Chứng<br/>Ưu Tiên Nguồn Nội Bộ]:::cAmb
     REFINE_AMB --> MERGE
     MERGE --> GEN
 
     %% XỬ LÝ NHÁNH INCORRECT
-    BR_INC --> REWRITE_INC[✏️ Viết Lại Truy Vấn]:::cInc
-    REWRITE_INC --> WEB_INC[🌐 Tìm Kiếm Web<br/>vbpl.vn, chinhphu.vn]:::cInc
+    BR_INC --> REWRITE_INC[Viết Lại Truy Vấn]:::cInc
+    REWRITE_INC --> WEB_INC[Tìm Kiếm Nguồn Ngoài<br/>vbpl.vn, chinhphu.vn]:::cInc
     WEB_INC --> GEN
 
     %% SINH LỜI GIẢI & KIỂM ĐỊNH
-    GEN[📝 Bộ Sinh Lời Giải<br/>Structured JSON Schema]:::cGen --> VALIDATE{🛡️ Kiểm Định Trích Dẫn<br/>Citation Validator}:::cVal
+    GEN[Bộ Sinh Lời Giải<br/>Structured JSON Schema]:::cGen --> VALIDATE{Kiểm Định Trích Dẫn<br/>Citation Validator}:::cVal
 
     %% KẾT QUẢ CUỐI CÙNG
-    VALIDATE -->|Trích dẫn đúng & Còn hiệu lực| SUCCESS([✅ Câu Trả Lời Hoàn Chỉnh<br/>Kèm Căn Cứ Pháp Lý]):::cSuccess
-    VALIDATE -->|Trích dẫn sai hoặc hết hiệu lực| FAIL([⚠️ Chặn Ảo Giác<br/>Cảnh Báo Vi Phạm]):::cFail
+    VALIDATE -->|Trích dẫn đúng & Còn hiệu lực| SUCCESS([Câu Trả Lời Hoàn Chỉnh<br/>Kèm Căn Cứ Pháp Lý]):::cSuccess
+    VALIDATE -->|Trích dẫn sai hoặc hết hiệu lực| FAIL([Chặn Ảo Giác<br/>Cảnh Báo Vi Phạm]):::cFail
 
     %% ĐỊNH NGHĨA MÀU SẮC VÀ PHONG CÁCH
     classDef cUser fill:#EBF8FF,stroke:#3182CE,stroke-width:2px,color:#2B6CB0;
