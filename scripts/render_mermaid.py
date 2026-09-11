@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import io
 import json
 import re
 import sys
@@ -45,8 +46,16 @@ class MermaidRenderer:
 
             resp = requests.get(url, timeout=self.timeout)
             if resp.status_code == 200 and len(resp.content) > 100:
-                output_path.write_bytes(resp.content)
-                print(f"  [SUCCESS] Rendered PNG to {output_path} ({len(resp.content)} bytes)")
+                # Enforce solid white background (RGB mode, 0% transparency)
+                from PIL import Image
+                raw_im = Image.open(io.BytesIO(resp.content))
+                white_bg = Image.new("RGB", raw_im.size, (255, 255, 255))
+                if raw_im.mode in ("RGBA", "LA") or (raw_im.mode == "P" and "transparency" in raw_im.info):
+                    white_bg.paste(raw_im, mask=raw_im.convert("RGBA").split()[3])
+                else:
+                    white_bg.paste(raw_im)
+                white_bg.save(output_path, "PNG")
+                print(f"  [SUCCESS] Rendered solid white background PNG to {output_path} ({output_path.stat().st_size} bytes)")
                 return True
         except Exception as e:
             print(f"  [WARN] mermaid.ink PNG render failed: {e}")
@@ -59,8 +68,15 @@ class MermaidRenderer:
 
             resp = requests.get(url, timeout=self.timeout)
             if resp.status_code == 200 and len(resp.content) > 100:
-                output_path.write_bytes(resp.content)
-                print(f"  [SUCCESS] Rendered PNG via kroki.io to {output_path}")
+                from PIL import Image
+                raw_im = Image.open(io.BytesIO(resp.content))
+                white_bg = Image.new("RGB", raw_im.size, (255, 255, 255))
+                if raw_im.mode in ("RGBA", "LA") or (raw_im.mode == "P" and "transparency" in raw_im.info):
+                    white_bg.paste(raw_im, mask=raw_im.convert("RGBA").split()[3])
+                else:
+                    white_bg.paste(raw_im)
+                white_bg.save(output_path, "PNG")
+                print(f"  [SUCCESS] Rendered solid white background PNG via kroki.io to {output_path}")
                 return True
         except Exception as e:
             print(f"  [ERROR] kroki.io PNG fallback failed: {e}")
@@ -68,11 +84,19 @@ class MermaidRenderer:
         return False
 
     def render_to_svg(self, mermaid_code: str, output_path: Path | str) -> bool:
-        """Render mermaid diagram to vector SVG file."""
+        """Render mermaid diagram to vector SVG file with explicit solid white background."""
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         clean_code = mermaid_code.strip()
+
+        def inject_white_rect(svg_text: str) -> str:
+            if not re.search(r'<rect[^>]*fill=["\']#ffffff["\']', svg_text, re.IGNORECASE):
+                svg_tag_m = re.search(r'(<svg[^>]*>)', svg_text)
+                if svg_tag_m:
+                    tag = svg_tag_m.group(1)
+                    return svg_text.replace(tag, f'{tag}\n  <rect width="100%" height="100%" fill="#FFFFFF"/>', 1)
+            return svg_text
 
         # Method 1: mermaid.ink SVG
         try:
@@ -87,8 +111,9 @@ class MermaidRenderer:
 
             resp = requests.get(url, timeout=self.timeout)
             if resp.status_code == 200 and "<svg" in resp.text:
-                output_path.write_text(resp.text, encoding="utf-8")
-                print(f"  [SUCCESS] Rendered SVG to {output_path}")
+                svg_text = inject_white_rect(resp.text)
+                output_path.write_text(svg_text, encoding="utf-8")
+                print(f"  [SUCCESS] Rendered solid white background SVG to {output_path}")
                 return True
         except Exception as e:
             print(f"  [WARN] mermaid.ink SVG render failed: {e}")
@@ -101,8 +126,9 @@ class MermaidRenderer:
 
             resp = requests.get(url, timeout=self.timeout)
             if resp.status_code == 200 and "<svg" in resp.text:
-                output_path.write_text(resp.text, encoding="utf-8")
-                print(f"  [SUCCESS] Rendered SVG via kroki.io to {output_path}")
+                svg_text = inject_white_rect(resp.text)
+                output_path.write_text(svg_text, encoding="utf-8")
+                print(f"  [SUCCESS] Rendered solid white background SVG via kroki.io to {output_path}")
                 return True
         except Exception as e:
             print(f"  [ERROR] kroki.io SVG fallback failed: {e}")
