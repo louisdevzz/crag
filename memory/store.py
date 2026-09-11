@@ -91,7 +91,7 @@ class MemoryStore:
             if session_id:
                 cur.execute(
                     """
-                    SELECT id, question, answer, route, crag_action, created_at
+                    SELECT id, session_id, question, answer, route, crag_action, created_at
                     FROM query_logs
                     WHERE client_id = ? AND session_id = ?
                     ORDER BY id DESC LIMIT ?
@@ -101,7 +101,7 @@ class MemoryStore:
             else:
                 cur.execute(
                     """
-                    SELECT id, question, answer, route, crag_action, created_at
+                    SELECT id, session_id, question, answer, route, crag_action, created_at
                     FROM query_logs
                     WHERE client_id = ?
                     ORDER BY id DESC LIMIT ?

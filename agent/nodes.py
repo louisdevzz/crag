@@ -5,10 +5,13 @@ import json
 import re
 from typing import Any, Dict, List
 
+from langgraph.config import get_stream_writer
+
 from agent.state import AgentState
 from config import T_HIGH, T_LOW
 from legal.citations import validate_citations
 from llm import get_chat_model
+from logging_config import get_logger
 from retrieval.bm25 import bm25_retrieve
 from retrieval.dense import dense_retrieve
 from retrieval.fusion import rrf_merge
@@ -18,11 +21,17 @@ from agent.router import get_semantic_router
 from retrieval.rewriter import get_query_rewriter
 from tools.registry import get_tool_registry
 
+log = get_logger(__name__)
+
 def route_question(state: AgentState) -> Dict[str, Any]:
     """Route user query dynamically via SemanticRouter (Intent Classification)."""
     query = state.get("query", "").strip()
     router = get_semantic_router()
     decision = router.route(query)
+    log.info(
+        "[ROUTER] query=%r -> route=%s reasoning=%r docs=%s",
+        query[:80], decision.route, decision.reasoning, decision.detected_document_numbers,
+    )
     return {
         "route": decision.route,
         "trace_meta": {
@@ -38,6 +47,8 @@ def query_db(state: AgentState) -> Dict[str, Any]:
     tool_res = get_tool_registry().execute("database_query", query=query, as_of_date=as_of_date)
     result = tool_res.data if tool_res.success and tool_res.data else {}
     docs = result.get("found_documents", [])
+    log.info("[DB] query=%r as_of_date=%s -> tool_success=%s found_documents=%d", query[:80], as_of_date, tool_res.success, len(docs))
+
     if docs:
         doc = docs[0]
         status_vi = "Còn hiệu lực" if doc.get("is_effective_now", True) else "Đã hết hiệu lực"
@@ -104,6 +115,10 @@ def hybrid_retrieve(state: AgentState) -> Dict[str, Any]:
 
     # RRF Fusion
     fused_candidates = rrf_merge([dense_hits, bm25_hits], k=60, top_k=20)
+    log.info(
+        "[RETRIEVE] query=%r -> dense=%d bm25=%d fused=%d",
+        query[:80], len(dense_hits), len(bm25_hits), len(fused_candidates),
+    )
 
     return {
         "dense_candidates": dense_hits,
@@ -121,6 +136,7 @@ def evaluate_retrieval(state: AgentState) -> Dict[str, Any]:
     scores = [float(d.get("score", 0.0)) for d in reranked]
 
     action = decide_crag_action(scores, t_low=T_LOW, t_high=T_HIGH)
+    log.info("[EVALUATE] reranked=%d top_score=%.4f -> crag_action=%s", len(reranked), max(scores) if scores else 0.0, action)
 
     return {
         "candidates": reranked,
@@ -141,6 +157,7 @@ def refine_internal_node(state: AgentState) -> Dict[str, Any]:
     if state.get("crag_action") == "CORRECT":
         updates["evidence"] = strips
 
+    log.info("[REFINE] candidates=%d -> internal_strips=%d (crag_action=%s)", len(candidates), len(strips), state.get("crag_action"))
     return updates
 
 
@@ -149,6 +166,7 @@ def rewrite_query_node(state: AgentState) -> Dict[str, Any]:
     query = state.get("query", "")
     rewriter = get_query_rewriter()
     rewritten = rewriter.rewrite(query)
+    log.info("[REWRITE] query=%r -> rewritten_query=%r entities=%s", query[:80], rewritten.search_query, rewritten.legal_entities)
     return {
         "rewritten_query": rewritten.search_query,
         "trace_meta": {
@@ -160,8 +178,10 @@ def rewrite_query_node(state: AgentState) -> Dict[str, Any]:
 def web_search_node(state: AgentState) -> Dict[str, Any]:
     """Controlled Web Search: fetch external documents via ToolRegistry."""
     rewritten_query = state.get("rewritten_query") or state.get("query", "")
+    log.info("[WEB] issuing real web search for query=%r", rewritten_query[:80])
     tool_res = get_tool_registry().execute("controlled_web_search", query=rewritten_query, max_results=4)
     external_strips = tool_res.data if tool_res.success and tool_res.data else []
+    log.info("[WEB] tool_success=%s external_strips=%d", tool_res.success, len(external_strips))
     return {"external_evidence": external_strips}
 
 
@@ -176,6 +196,7 @@ def select_external_node(state: AgentState) -> Dict[str, Any]:
     if state.get("crag_action") == "INCORRECT":
         updates["evidence"] = refined_external
 
+    log.info("[SELECT_WEB] external_evidence=%d -> refined=%d", len(external_evidence), len(refined_external))
     return updates
 
 
@@ -185,6 +206,7 @@ def merge_evidence_node(state: AgentState) -> Dict[str, Any]:
     external = state.get("external_evidence", [])
 
     merged = merge_evidence(internal, external, max_items=8)
+    log.info("[MERGE] internal=%d external=%d -> merged=%d", len(internal), len(external), len(merged))
     return {"evidence": merged}
 
 
@@ -208,6 +230,7 @@ def generate_answer(state: AgentState) -> Dict[str, Any]:
 
     # If evidence is completely empty or all below relevance
     if not evidence or len(evidence) == 0:
+        log.warning("[GENERATE] evidence=0 -> abstaining without calling LLM")
         abstain_resp = {
             "answer": "Chưa đủ căn cứ pháp lý để kết luận.",
             "claims": [],
@@ -248,17 +271,28 @@ CÂU HỎI:
     llm = get_chat_model()
     generation: Dict[str, Any] = {}
 
+    writer = get_stream_writer()
+    log.info("[GENERATE] evidence=%d prompt_chars=%d llm_available=%s", len(evidence), len(prompt), llm is not None)
+
     if llm is not None:
         try:
-            res = llm.invoke(prompt)
-            raw_text = res.content if hasattr(res, "content") else str(res)
+            raw_text = ""
+            chunk_count = 0
+            for chunk in llm.stream(prompt):
+                raw_text += chunk.content
+                if chunk.content:
+                    chunk_count += 1
+                    writer({"raw_chunk": chunk.content})
+            log.info("[GENERATE] real LLM stream received %d chunks, %d raw chars", chunk_count, len(raw_text))
             # Extract JSON block
             json_m = re.search(r"\{[\s\S]*\}", raw_text)
             if json_m:
                 generation = json.loads(json_m.group(0))
             else:
                 generation = {"answer": raw_text, "claims": [], "abstain": False}
+            log.info("[GENERATE] answer_chars=%d claims=%d abstain=%s", len(generation.get("answer", "")), len(generation.get("claims", [])), generation.get("abstain"))
         except Exception as e:
+            log.error("[GENERATE] LLM call FAILED (%s) -> falling back to deterministic evidence synthesis", e)
             # Fallback deterministic answer synthesis from top evidence
             top_ev = evidence[0]
             sid = top_ev.get("strip_id") or top_ev.get("locator")
@@ -270,6 +304,7 @@ CÂU HỎI:
             }
     else:
         # Deterministic offline synthesis
+        log.warning("[GENERATE] no LLM client -> deterministic offline synthesis (no real generation)")
         top_ev = evidence[0]
         sid = top_ev.get("strip_id") or top_ev.get("locator")
         ans = f"Căn cứ vào quy định tại {top_ev.get('heading')}: {top_ev.get('text')[:300]} [{sid}]."
@@ -303,4 +338,8 @@ def validate_citations_node(state: AgentState) -> Dict[str, Any]:
             if val:
                 evidence_map[str(val)] = ev
     report = validate_citations(generation, evidence_map, as_of_date=as_of_date)
+    log.info(
+        "[CITE_VALIDATE] ok=%s accuracy=%.2f coverage=%.2f errors=%d",
+        report.get("ok"), report.get("citation_accuracy", 0.0), report.get("citation_coverage", 0.0), len(report.get("errors", [])),
+    )
     return {"citation_report": report}

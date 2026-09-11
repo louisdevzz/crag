@@ -10,7 +10,13 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
+
+# Load .env from the project root, overriding any stale values already
+# present in the process environment (e.g. from a long-lived dev server
+# started before the .env file was last edited).
+load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 
 
 class LLMConfig(BaseModel):

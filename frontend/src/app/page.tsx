@@ -3,16 +3,21 @@
 import React, { useEffect, useState } from "react";
 import {
   clearClientMemory,
+  fetchAdminSettings,
   fetchClientMemory,
   fetchDocuments,
-  sendChatMessage,
+  fetchHistory,
+  streamChatMessage,
 } from "../lib/api";
-import { CitationReport, EvidenceItem, LegalDocument, Message } from "../lib/types";
-import { ChatInput } from "../components/ChatInput";
-import { ChatStream } from "../components/ChatStream";
-import { Navbar } from "../components/Navbar";
-import { Sidebar } from "../components/Sidebar";
-import { TraceDrawer } from "../components/TraceDrawer";
+import { ChatResponse, HistoryItem, LegalDocument, Message, ModelSettings } from "../lib/types";
+import { summarizeHistoryBySession } from "../lib/history";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { AppSidebar } from "../components/chat/app-sidebar";
+import { ChatHeader } from "../components/chat/chat-header";
+import { WelcomeHero } from "../components/chat/welcome-hero";
+import { MessageList } from "../components/chat/message-list";
+import { PromptComposer } from "../components/chat/prompt-composer";
+import { SettingsModal } from "../components/SettingsModal";
 
 export default function HomePage() {
   const [clientId, setClientId] = useState<string>("");
@@ -20,16 +25,16 @@ export default function HomePage() {
   const [asOfDate, setAsOfDate] = useState<string>("2026-01-01");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isTraceOpen, setIsTraceOpen] = useState<boolean>(true);
+  // Current real pipeline stage (0-3) from SSE `node` events; null once the
+  // answer starts streaming (or there is no active turn).
+  const [liveStage, setLiveStage] = useState<number | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
   // Data states
   const [documents, setDocuments] = useState<LegalDocument[]>([]);
   const [memories, setMemories] = useState<Record<string, string>>({});
-  const [currentCitationReport, setCurrentCitationReport] = useState<CitationReport | null>(null);
-  // Current Turn Trace info
-  const [currentRoute, setCurrentRoute] = useState<string>("rag");
-  const [currentAction, setCurrentAction] = useState<string>("CORRECT");
-  const [currentEvidence, setCurrentEvidence] = useState<EvidenceItem[]>([]);
+  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
+  const [modelLabel, setModelLabel] = useState<string>("Model");
 
   // Initialize Client ID and Session ID on mount
   useEffect(() => {
@@ -46,14 +51,32 @@ export default function HomePage() {
   }, []);
 
   const loadInitialData = async (cid: string) => {
-    const [docs, memData] = await Promise.all([
+    const [docs, memData, hist, settings] = await Promise.all([
       fetchDocuments(),
       fetchClientMemory(cid),
+      fetchHistory(cid),
+      fetchAdminSettings(),
     ]);
     setDocuments(docs);
     if (memData?.memories) {
       setMemories(memData.memories);
     }
+    setHistoryItems(hist);
+    if (settings?.current?.model) {
+      setModelLabel(settings.current.model);
+    }
+  };
+
+  const refreshMemoryAndHistory = async () => {
+    if (!clientId) return;
+    const [memData, hist] = await Promise.all([
+      fetchClientMemory(clientId),
+      fetchHistory(clientId),
+    ]);
+    if (memData?.memories) {
+      setMemories(memData.memories);
+    }
+    setHistoryItems(hist);
   };
 
   const handleSendMessage = async (query: string) => {
@@ -66,64 +89,108 @@ export default function HomePage() {
       timestamp: new Date().toISOString(),
     };
 
+    const assistantId = "ast_" + Date.now();
+    let hasToken = false;
+
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
+    setLiveStage(0);
 
-    try {
-      const response = await sendChatMessage({
-        query,
-        clientId,
-        sessionId,
-        asOfDate,
-      });
-
-      // Update Trace States
-      setCurrentRoute(response.route);
-      setCurrentAction(response.crag_action);
-      setCurrentEvidence(response.evidence || []);
-      setCurrentCitationReport(response.citation_report);
-
-      const assistantMessage: Message = {
-        id: "ast_" + Date.now(),
-        role: "assistant",
-        content: response.generation.answer,
-        timestamp: new Date().toISOString(),
-        citationReport: response.citation_report,
-        trace: {
-          route: response.route,
-          cragAction: response.crag_action,
-          evidence: response.evidence || [],
+    await streamChatMessage(
+      { query, clientId, sessionId, asOfDate },
+      {
+        onNode: (_node, stage) => {
+          if (!hasToken) setLiveStage(stage);
         },
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-
-      // Refresh memory profile after turn
-      if (clientId) {
-        const memData = await fetchClientMemory(clientId);
-        if (memData?.memories) {
-          setMemories(memData.memories);
-        }
+        onToken: (text) => {
+          if (!hasToken) {
+            hasToken = true;
+            setLiveStage(null);
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: assistantId,
+                role: "assistant",
+                content: text,
+                timestamp: new Date().toISOString(),
+                isStreaming: true,
+              },
+            ]);
+          } else {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + text } : m))
+            );
+          }
+        },
+        onDone: async (payload: ChatResponse) => {
+          setLiveStage(null);
+          const finalized: Message = {
+            id: assistantId,
+            role: "assistant",
+            content: payload.generation.answer,
+            timestamp: new Date().toISOString(),
+            isStreaming: false,
+            citationReport: payload.citation_report,
+            trace: {
+              route: payload.route,
+              cragAction: payload.crag_action,
+              evidence: payload.evidence || [],
+            },
+          };
+          setMessages((prev) =>
+            hasToken
+              ? prev.map((m) => (m.id === assistantId ? finalized : m))
+              : [...prev, finalized]
+          );
+          setIsLoading(false);
+          await refreshMemoryAndHistory();
+        },
+        onError: (message) => {
+          setLiveStage(null);
+          const errorMessage: Message = {
+            id: "err_" + Date.now(),
+            role: "assistant",
+            content: `⚠️ Đã xảy ra lỗi khi xử lý yêu cầu: ${message}`,
+            timestamp: new Date().toISOString(),
+          };
+          setMessages((prev) =>
+            hasToken ? [...prev.filter((m) => m.id !== assistantId), errorMessage] : [...prev, errorMessage]
+          );
+          setIsLoading(false);
+        },
       }
-    } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      const errorMessage: Message = {
-        id: "err_" + Date.now(),
-        role: "assistant",
-        content: `⚠️ Đã xảy ra lỗi khi xử lý yêu cầu: ${errorMsg}`,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
-    }
+    );
   };
 
   const handleNewChat = () => {
     setSessionId("session_" + Math.random().toString(36).substring(2, 11));
     setMessages([]);
-    setCurrentEvidence([]);
-    setCurrentCitationReport(null);
+  };
+
+  const handleSelectConversation = async (targetSessionId: string) => {
+    if (!clientId || targetSessionId === sessionId) return;
+    const turns = await fetchHistory(clientId, { sessionId: targetSessionId, limit: 200 });
+    if (turns.length === 0) return;
+
+    const reconstructed: Message[] = [];
+    for (const turn of turns) {
+      reconstructed.push({
+        id: `usr_${turn.id}`,
+        role: "user",
+        content: turn.question,
+        timestamp: turn.created_at,
+      });
+      reconstructed.push({
+        id: `ast_${turn.id}`,
+        role: "assistant",
+        content: turn.answer,
+        timestamp: turn.created_at,
+        trace: { route: turn.route, cragAction: turn.crag_action, evidence: [] },
+      });
+    }
+
+    setSessionId(targetSessionId);
+    setMessages(reconstructed);
   };
 
   const handleClearMemory = async () => {
@@ -133,43 +200,59 @@ export default function HomePage() {
     }
   };
 
+  const conversations = summarizeHistoryBySession(historyItems);
+  const memoryCount = Object.keys(memories).length;
+
+  const composerProps = {
+    isLoading,
+    asOfDate,
+    onAsOfDateChange: setAsOfDate,
+    modelLabel,
+    onOpenModelSettings: () => setIsSettingsOpen(true),
+  };
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-50">
-      {/* LEFT SIDEBAR */}
-      <Sidebar
-        documents={documents}
+    <>
+      <SidebarProvider>
+        <AppSidebar
+          clientId={clientId}
+          documents={documents}
+          conversations={conversations}
+          activeSessionId={sessionId}
+          memoryCount={memoryCount}
+          onNewChat={handleNewChat}
+          onSelectConversation={handleSelectConversation}
+          onSelectPrompt={handleSendMessage}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
+
+        <SidebarInset className="flex h-screen flex-col overflow-hidden bg-background">
+          <ChatHeader />
+
+          {messages.length === 0 ? (
+            <WelcomeHero onSend={handleSendMessage} {...composerProps} />
+          ) : (
+            <>
+              <MessageList messages={messages} isLoading={isLoading} liveStage={liveStage} />
+              <div className="mx-auto w-full max-w-3xl flex-shrink-0 px-4 pb-4">
+                <PromptComposer onSend={handleSendMessage} {...composerProps} />
+                <p className="mt-2 text-center text-[11px] text-muted-foreground">
+                  Mọi câu trả lời đều được kiểm định xác thực từ kho văn bản quy phạm pháp luật nội
+                  bộ hoặc cổng thông tin chính thống.
+                </p>
+              </div>
+            </>
+          )}
+        </SidebarInset>
+      </SidebarProvider>
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onModelChange={(model: ModelSettings) => setModelLabel(model.model)}
         memories={memories}
-        onNewChat={handleNewChat}
         onClearMemory={handleClearMemory}
       />
-
-      {/* CENTER CHAT WORKSPACE */}
-      <main className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden relative">
-        <Navbar
-          asOfDate={asOfDate}
-          onDateChange={setAsOfDate}
-          isTraceOpen={isTraceOpen}
-          onToggleTrace={() => setIsTraceOpen(!isTraceOpen)}
-        />
-
-        <ChatStream
-          messages={messages}
-          isLoading={isLoading}
-          onSelectPrompt={handleSendMessage}
-        />
-
-        <ChatInput onSendMessage={handleSendMessage} isLoading={isLoading} />
-      </main>
-
-      {/* RIGHT EXECUTION TRACE DRAWER (Hermes / DeepSeek Style) */}
-      <TraceDrawer
-        isOpen={isTraceOpen}
-        onClose={() => setIsTraceOpen(false)}
-        route={currentRoute}
-        cragAction={currentAction}
-        citationReport={currentCitationReport}
-        evidence={currentEvidence}
-      />
-    </div>
+    </>
   );
 }

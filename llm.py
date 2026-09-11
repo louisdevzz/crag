@@ -14,13 +14,14 @@ from typing import Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from config import (
+    CONFIG,
     EMBEDDING_MODEL,
-    LLM_MODEL,
-    LLM_PROVIDER,
-    LLM_TEMPERATURE,
     OLLAMA_BASE_URL,
     OPENROUTER_BASE_URL,
 )
+from logging_config import get_logger
+
+log = get_logger(__name__)
 
 
 def get_chat_model(
@@ -45,33 +46,42 @@ def get_chat_model(
     BaseChatModel
         LangChain-compatible chat model instance
     """
-    p = (provider or LLM_PROVIDER).lower().strip()
-    m = model or LLM_MODEL
-    t = LLM_TEMPERATURE if temperature is None else temperature
+    p = (provider or CONFIG.llm.provider).lower().strip()
+    m = model or CONFIG.llm.model
+    t = CONFIG.llm.temperature if temperature is None else temperature
 
     try:
         if p == "groq":
             api_key = kwargs.pop("api_key", os.getenv("GROQ_API_KEY"))
             if not api_key:
+                log.warning("LLM provider=groq -> NO API KEY configured, falling back to offline synthesis")
                 return None
             from providers.groq_models import resolve_groq_model
             resolved_m = resolve_groq_model(requested_model=m, preferred_family="qwen", api_key=api_key)
             from langchain_groq import ChatGroq
+            log.info("LLM provider=groq model=%s temperature=%s -> real ChatGroq client initialized", resolved_m, t)
             return ChatGroq(model=resolved_m, temperature=t, api_key=api_key, **kwargs)
 
         elif p == "openai":
             api_key = kwargs.pop("api_key", os.getenv("OPENAI_API_KEY"))
             if not api_key:
+                log.warning("LLM provider=openai -> NO API KEY configured, falling back to offline synthesis")
                 return None
             from langchain_openai import ChatOpenAI
+            log.info("LLM provider=openai model=%s temperature=%s -> real ChatOpenAI client initialized", m, t)
             return ChatOpenAI(model=m, temperature=t, api_key=api_key, **kwargs)
 
         elif p == "openrouter":
             api_key = kwargs.pop("api_key", os.getenv("OPENROUTER_API_KEY"))
             if not api_key:
+                log.warning("LLM provider=openrouter -> NO API KEY configured, falling back to offline synthesis")
                 return None
             from langchain_openai import ChatOpenAI
             base_url = kwargs.pop("base_url", OPENROUTER_BASE_URL)
+            log.info(
+                "LLM provider=openrouter model=%s temperature=%s base_url=%s -> real client initialized",
+                m, t, base_url,
+            )
             return ChatOpenAI(
                 model=m,
                 temperature=t,
@@ -83,11 +93,14 @@ def get_chat_model(
         elif p == "ollama":
             from langchain_ollama import ChatOllama
             base_url = kwargs.pop("base_url", OLLAMA_BASE_URL)
+            log.info("LLM provider=ollama model=%s base_url=%s -> real client initialized", m, base_url)
             return ChatOllama(model=m, temperature=t, base_url=base_url, **kwargs)
 
         else:
+            log.error("LLM provider=%s is unknown -> falling back to offline synthesis", p)
             return None
-    except Exception:
+    except Exception as e:
+        log.error("LLM provider=%s init FAILED (%s) -> falling back to offline synthesis", p, e)
         return None
 
 class FallbackDenseEmbeddings:
@@ -141,16 +154,19 @@ def get_embeddings(provider: Optional[str] = None, model: Optional[str] = None):
             resp = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=1)
             if resp.status_code == 200:
                 from langchain_ollama import OllamaEmbeddings
+                log.info("Embeddings provider=ollama model=%s -> real OllamaEmbeddings initialized", m)
                 return OllamaEmbeddings(model=m, base_url=OLLAMA_BASE_URL)
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("Embeddings provider=ollama unreachable (%s), trying next backend", e)
 
     elif p in ("huggingface", "sentence-transformers"):
         try:
             from langchain_community.embeddings import HuggingFaceEmbeddings
+            log.info("Embeddings provider=%s model=%s -> real HuggingFaceEmbeddings initialized", p, m)
             return HuggingFaceEmbeddings(model_name=m)
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("Embeddings provider=%s init FAILED (%s), falling back to local vectorizer", p, e)
 
     # Fallback to deterministic local vectorizer
+    log.warning("Embeddings -> FALLBACK hashing vectorizer in use (no real embedding model loaded)")
     return FallbackDenseEmbeddings(dim=384)

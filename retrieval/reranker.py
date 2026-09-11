@@ -5,6 +5,9 @@ import math
 from typing import Any, Dict, List, Optional
 
 from config import INTERNAL_STRIP_MIN, RERANKER_MODEL, T_HIGH, T_LOW, TOP_K_RERANK
+from logging_config import get_logger
+
+log = get_logger(__name__)
 
 
 def sigmoid(x: float) -> float:
@@ -34,21 +37,27 @@ class LegalReranker:
             from FlagEmbedding import FlagReranker
             self._model = FlagReranker(self.model_name, use_fp16=False)
             self._model_type = "flag"
+            log.info("Reranker model=%s -> real FlagReranker (cross-encoder) loaded", self.model_name)
             return
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("Reranker FlagEmbedding unavailable (%s)", e)
 
         # 2. Try sentence_transformers CrossEncoder
         try:
             from sentence_transformers import CrossEncoder
             self._model = CrossEncoder(self.model_name)
             self._model_type = "cross_encoder"
+            log.info("Reranker model=%s -> real sentence-transformers CrossEncoder loaded", self.model_name)
             return
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("Reranker sentence-transformers unavailable (%s)", e)
 
         # 3. Fallback to token-level semantic scorer
         self._model_type = "fallback"
+        log.warning(
+            "Reranker model=%s NOT available -> FALLBACK token-overlap heuristic in use (no real cross-encoder)",
+            self.model_name,
+        )
 
     def compute_scores(self, query: str, texts: List[str]) -> List[float]:
         """Compute sigmoid-normalized relevance scores in [0.0, 1.0]."""
@@ -153,8 +162,13 @@ def decide_crag_action(scores: List[float], t_low: float = T_LOW, t_high: float 
     """
     best_score = max(scores) if scores else 0.0
     if best_score >= t_high:
-        return "CORRECT"
+        action = "CORRECT"
     elif best_score <= t_low:
-        return "INCORRECT"
+        action = "INCORRECT"
     else:
-        return "AMBIGUOUS"
+        action = "AMBIGUOUS"
+    log.info(
+        "CRAG decision: best_score=%.4f (t_low=%.2f t_high=%.2f) scores=%s -> action=%s",
+        best_score, t_low, t_high, [round(s, 3) for s in scores], action,
+    )
+    return action
