@@ -12,7 +12,7 @@ import re
 import sys
 import zlib
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import requests
 
@@ -20,11 +20,11 @@ import requests
 class MermaidRenderer:
     """Renders Mermaid code into high-resolution PNG or vector SVG images."""
 
-    def __init__(self, timeout: int = 15):
+    def __init__(self, timeout: int = 20):
         self.timeout = timeout
 
     def render_to_png(self, mermaid_code: str, output_path: Path | str, theme: str = "default") -> bool:
-        """Render mermaid diagram to PNG image file via mermaid.ink / kroki.io."""
+        """Render mermaid diagram to PNG image file via mermaid.ink / kroki.io with white background."""
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -34,7 +34,10 @@ class MermaidRenderer:
         try:
             payload = {
                 "code": clean_code,
-                "mermaid": {"theme": theme}
+                "mermaid": {
+                    "theme": theme,
+                    "themeVariables": {"background": "#FFFFFF"}
+                }
             }
             json_str = json.dumps(payload)
             b64_encoded = base64.b64encode(json_str.encode("utf-8")).decode("ascii")
@@ -73,7 +76,13 @@ class MermaidRenderer:
 
         # Method 1: mermaid.ink SVG
         try:
-            b64_encoded = base64.b64encode(clean_code.encode("utf-8")).decode("ascii")
+            payload = {
+                "code": clean_code,
+                "mermaid": {
+                    "themeVariables": {"background": "#FFFFFF"}
+                }
+            }
+            b64_encoded = base64.b64encode(json.dumps(payload).encode("utf-8")).decode("ascii")
             url = f"https://mermaid.ink/svg/{b64_encoded}"
 
             resp = requests.get(url, timeout=self.timeout)
@@ -101,53 +110,50 @@ class MermaidRenderer:
         return False
 
 
-def extract_mermaid_blocks(markdown_content: str) -> List[Tuple[str, str]]:
-    """Extract mermaid code blocks and optional titles/comments from markdown text."""
-    pattern = re.compile(r"```mermaid\s*\n([\s\S]*?)\n```", re.MULTILINE)
-    matches = pattern.findall(markdown_content)
-    blocks = []
-    for idx, code in enumerate(matches, start=1):
-        name = f"diagram_{idx}"
-        first_line = code.strip().split("\n")[0]
-        if "%%" in first_line:
-            custom_name = first_line.replace("%%", "").strip()
-            name = re.sub(r"[^A-Za-z0-9_\-]", "_", custom_name).lower()
-        blocks.append((name, code))
-    return blocks
-
-
-def render_markdown_diagrams(md_file: Path | str, output_dir: Path | str = "docs/images") -> Dict[str, str]:
-    """Scan markdown file, extract all mermaid blocks, and render images."""
-    md_file = Path(md_file)
+def render_file(input_file: Path | str, output_dir: Path | str = "docs/images") -> Dict[str, str]:
+    """Render a .mmd or .md file into PNG and SVG images."""
+    input_path = Path(input_file)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    if not md_file.exists():
-        raise FileNotFoundError(f"Markdown file not found: {md_file}")
+    if not input_path.exists():
+        raise FileNotFoundError(f"Input file not found: {input_path}")
 
-    content = md_file.read_text(encoding="utf-8")
-    blocks = extract_mermaid_blocks(content)
-
-    print(f"Found {len(blocks)} Mermaid diagram blocks in {md_file.name}")
+    content = input_path.read_text(encoding="utf-8")
     renderer = MermaidRenderer()
-    rendered_map = {}
+    results = {}
 
-    for name, code in blocks:
-        png_path = output_dir / f"{name}.png"
-        svg_path = output_dir / f"{name}.svg"
+    if input_path.suffix.lower() == ".mmd":
+        stem = input_path.stem
+        out_png = output_dir / f"{stem}.png"
+        out_svg = output_dir / f"{stem}.svg"
+        print(f"Rendering '{input_path.name}' -> PNG & SVG...")
+        renderer.render_to_png(content, out_png)
+        renderer.render_to_svg(content, out_svg)
+        results[stem] = str(out_png)
+    else:
+        # Markdown file: extract mermaid blocks
+        pattern = re.compile(r"```mermaid\s*\n([\s\S]*?)\n```", re.MULTILINE)
+        matches = pattern.findall(content)
+        for idx, code in enumerate(matches, start=1):
+            name = f"{input_path.stem}_diagram_{idx}"
+            first_line = code.strip().split("\n")[0]
+            if "%%" in first_line:
+                name = re.sub(r"[^A-Za-z0-9_\-]", "_", first_line.replace("%%", "").strip()).lower()
+            out_png = output_dir / f"{name}.png"
+            out_svg = output_dir / f"{name}.svg"
+            print(f"Rendering block '{name}' -> PNG & SVG...")
+            renderer.render_to_png(code, out_png)
+            renderer.render_to_svg(code, out_svg)
+            results[name] = str(out_png)
 
-        print(f"\nRendering '{name}'...")
-        renderer.render_to_png(code, png_path)
-        renderer.render_to_svg(code, svg_path)
-        rendered_map[name] = str(png_path)
-
-    return rendered_map
+    return results
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Render Mermaid diagrams in Markdown to PNG/SVG")
-    parser.add_argument("markdown_file", nargs="?", default="docs/WORKFLOW.md", help="Path to markdown file")
-    parser.add_argument("--output-dir", default="docs/images", help="Target directory for image outputs")
+    parser = argparse.ArgumentParser(description="Render Mermaid diagrams to PNG/SVG with white background")
+    parser.add_argument("input_file", nargs="?", default="docs/workflow.mmd", help="Path to .mmd or .md file")
+    parser.add_argument("--output-dir", default="docs/images", help="Target directory for images")
     args = parser.parse_args()
 
-    render_markdown_diagrams(args.markdown_file, args.output_dir)
+    render_file(args.input_file, args.output_dir)

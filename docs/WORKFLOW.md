@@ -1,277 +1,71 @@
-# Tài liệu Luồng Hoạt động Hệ thống (Workflow Architecture)
+# Sơ đồ và Luồng Hoạt động Toàn diện — Legal CRAG Assistant V3
 
-> **Mô tả chi tiết nguyên lý vận hành, kiến trúc 3 tầng, quy trình tự hiệu chỉnh truy hồi Corrective RAG (CRAG) 3 nhánh và cơ chế quản lý Session Memory có kiểm soát.**
-
----
-
-## MỤC LỤC
-
-1. [Tổng quan Kiến trúc 3 Layer](#1-tổng-quan-kiến-trúc-3-layer)
-2. [Sơ đồ Kiến trúc 3 Layer (Diagram 1)](#2-sơ-đồ-kiến-trúc-3-layer-diagram-1)
-3. [Luồng Hoạt động Cốt lõi CRAG 3 Nhánh (Diagram 2)](#3-luồng-hoạt-động-cốt-lõi-crag-3-nhánh-diagram-2)
-4. [Phân tích Chi tiết Từng Node Xử lý](#4-phân-tích-chi-tiết-từng-node-xử-lý)
-5. [Cơ chế Session Memory & Cách ly Tuyệt đối (Diagram 3)](#5-cơ-chế-session-memory--cách-ly-tuyệt-đối-diagram-3)
-6. [Tái lập Hình ảnh Sơ đồ từ Mermaid](#6-tái-lập-hình-ảnh-sơ-đồ-từ-mermaid)
+> **Tài liệu thuyết minh quy trình điều phối tác tử tự hiệu chỉnh truy hồi Corrective RAG (CRAG) và Quản lý Bộ nhớ Phiên làm việc (Session Memory).**
 
 ---
 
-## 1. Tổng quan Kiến trúc 3 Layer
+## 1. Sơ đồ Luồng Hoạt động Toàn diện (Unified Architecture Workflow)
 
-Hệ thống Legal CRAG Assistant V3 tuân thủ nghiêm ngặt nguyên lý phân định ranh giới trách nhiệm (*Separation of Concerns*) giữa 3 tầng chức năng:
+Toàn bộ quy trình từ lúc tiếp nhận câu hỏi của người dùng, phân luồng điều hướng, truy hồi lai, đánh giá bằng chứng 3 nhánh CRAG, kiểm định trích dẫn đến khi trả về câu trả lời hoàn chỉnh được tích hợp thống nhất trên **một sơ đồ duy nhất**:
 
-- **Layer 1 — Interface & API:**  
-  Tiếp nhận yêu cầu từ người dùng qua CLI hoặc FastAPI Gateway. Phụ trách quản lý định danh ẩn danh (`client_id`, `session_id`) và trả về kết quả kèm bảng trích dẫn minh bạch.
-- **Layer 2 — Agent & Correction (LangGraph):**  
-  Bộ não điều phối luồng thực thi: Phân luồng câu hỏi, truy hồi lai, chấm điểm bằng chứng bằng mô hình độc lập (*Retrieval Evaluator*), rẽ 3 nhánh xử lý thích ứng (*Knowledge Refinement, Query Rewrite, Controlled Web Search, Evidence Merging*), sinh câu trả lời có cấu trúc và kiểm định trích dẫn xác định (*Citation Validator*).
-- **Layer 3 — Knowledge & Data:**  
-  Hạ tầng dữ liệu bền vững gồm SQLite (`app.db`) quản lý văn bản, điều khoản và lịch sử; ChromaDB lưu trữ Dense Vector Index; rank-bm25 lưu trữ Lexical Index; và bộ lọc tên miền công quyền chính thống (`vbpl.vn`, `chinhphu.vn`...).
+![Sơ đồ Toàn diện Luồng Hoạt động Legal CRAG Assistant V3](images/workflow.png)
 
 ---
 
-## 2. Sơ đồ Kiến trúc 3 Layer (Diagram 1)
+## 2. Thuyết minh Các Giai đoạn Xử lý trong Luồng
 
-![3-Layer Architecture](images/arch_3layer.png)
+Quy trình hoạt động trên sơ đồ được chia thành 6 giai đoạn logic:
 
-```mermaid
-%% arch_3layer
-graph TB
-    subgraph L1 ["LAYER 1 — INTERFACE & API GATEWAY"]
-        UI["🖥️ Next.js Web Frontend<br/>(TypeScript / localStorage)"]
-        CLI["💻 Interactive CLI Chat<br/>(main.py --demo)"]
-        API["⚡ FastAPI RESTful API Gateway<br/>(/api/chat, /api/memory, /api/documents)"]
-    end
+### Giai đoạn 1: Tiếp nhận Yêu cầu & Nhận diện Phiên
+- **Người dùng / Trình duyệt:** Gửi câu hỏi pháp lý kèm mã định danh ẩn danh (`client_id`) và phiên (`session_id`).
+- **Cổng API Gateway (FastAPI):** Tiếp nhận yêu cầu, bảo đảm tính độc lập của từng client.
 
-    subgraph L2 ["LAYER 2 — AGENT & CORRECTION ORCHESTRATOR (LangGraph)"]
-        ROUTER["🧭 Query Router<br/>(database vs rag vs general)"]
-        HYBRID["🔍 Hybrid Retrieval<br/>(Dense + Lexical BM25 + RRF)"]
-        EVAL["⚖️ Retrieval Evaluator<br/>(Cross-Encoder Sigmoid Relevance)"]
-        REFINE["✂️ Knowledge Refinement<br/>(Decompose into Legal Strips)"]
-        REWRITE["✏️ Query Rewrite Engine<br/>(Optimized Legal Search Query)"]
-        WEB["🌐 Controlled Web Search<br/>(Official Legal Portals Allow-list)"]
-        MERGE["🔗 Evidence Merging<br/>(Internal Strip Priority > Web)"]
-        GEN["📝 Structured Generator<br/>(Strict JSON Schema + Citations)"]
-        CITE["🛡️ Deterministic Citation Validator<br/>(Verify source_id & Temporal Validity)"]
-    end
+### Giai đoạn 2: Quản lý Bộ nhớ Phiên (Session Memory)
+- **Cơ chế Allow-List:** Tự động trích xuất các thuộc tính hồ sơ doanh nghiệp bền vững (`business_type`, `industry`, `province`...).
+- **Nguyên tắc Memory Guardrail:** Bối cảnh doanh nghiệp chỉ dùng để giải nghĩa đại từ (ví dụ: *"công ty tôi"* $\to$ Công ty TNHH tại Long An), tuyệt đối không bao giờ dùng làm căn cứ pháp lý.
+- **Cam kết Cách ly:** Đạt chỉ số an toàn **Cross-client Contamination = 0** (dữ liệu client A không bao giờ rò rỉ sang client B).
 
-    subgraph L3 ["LAYER 3 — KNOWLEDGE & DATA STORAGE"]
-        SQL["🗄️ SQLite Database (app.db)<br/>• legal_documents<br/>• provisions<br/>• client_memories<br/>• query_logs"]
-        CHROMA["🧠 Chroma Vector Database<br/>• Dense Embeddings (384-dim / BGE-M3)<br/>• Collection: legal_corpus_v1"]
-        BM25["📚 BM25 Lexical Store<br/>• rank-bm25 Token Index<br/>• Exact Article/Clause Match"]
-        GOV_WEB["🏛️ Official Portals Allow-List<br/>• vbpl.vn<br/>• vanban.chinhphu.vn<br/>• moj.gov.vn<br/>• thuvienphapluat.vn"]
-    end
+### Giai đoạn 3: Bộ Điều hướng Thông minh (Query Router)
+Phân tích ngữ nghĩa câu hỏi để chuyển nhánh tối ưu:
+- **Nhánh Tra cứu CSDL (DB Tool):** Khi câu hỏi hỏi về số hiệu văn bản, ngày ban hành, hoặc tình trạng hiệu lực (ví dụ: *"Văn bản số 41/2024/QH15 còn hiệu lực không?"*) $\to$ Truy vấn trực tiếp các bảng quan hệ SQLite để trả lời ngay lập tức.
+- **Nhánh Tra cứu Nội dung (CRAG Pipeline):** Đối với mọi câu hỏi hỏi về quy định, điều kiện, quyền và nghĩa vụ $\to$ Kích hoạt chu trình truy hồi và tự hiệu chỉnh CRAG.
 
-    UI --> API
-    CLI --> L2
-    API --> ROUTER
+### Giai đoạn 4: Truy hồi Lai (Hybrid Retrieval) & Đánh giá Bằng chứng (Evaluator)
+1. **Truy hồi song song:**
+   - **Dense Vector:** Tìm kiếm ngữ nghĩa trên ChromaDB với vector embeddings.
+   - **Lexical BM25:** Tìm kiếm từ khóa chính xác (`rank-bm25`) bắt trọn số Điều, Khoản.
+2. **Hợp nhất Xếp hạng (RRF):** Kết hợp hai danh sách ứng viên theo giải thuật *Reciprocal Rank Fusion* ($k=60$) để tạo ra Top-20 ứng viên tốt nhất.
+3. **Đánh giá Bằng chứng (Cross-Encoder Sigmoid):**
+   - Mô hình Reranker tính điểm liên quan chuẩn hóa Sigmoid trong đoạn $[0.0, 1.0]$.
+   - Quyết định hành động dựa trên 2 ngưỡng tối ưu đã được hiệu chuẩn:
+     - $Score \ge T_{high} = 0.80 \;\longrightarrow\;$ **Nhánh ĐỦ BẰNG CHỨNG (CORRECT)**
+     - $0.40 \le Score < 0.80 \;\longrightarrow\;$ **Nhánh BẰNG CHỨNG MỘT PHẦN (AMBIGUOUS)**
+     - $Score \le T_{low} = 0.40 \;\longrightarrow\;$ **Nhánh THIẾU BẰNG CHỨNG (INCORRECT)**
 
-    ROUTER -->|Metadata Query| SQL
-    ROUTER -->|Legal QA| HYBRID
+### Giai đoạn 5: Cơ chế Tự Hiệu chỉnh 3 Nhánh CRAG
+- 🟢 **Nhánh CORRECT (Đủ bằng chứng):**
+  Kích hoạt *Knowledge Refinement* phân tách các đoạn dài thành từng *Legal Strip* (Khoản/Điểm cụ thể), lọc bỏ nhiễu và chuyển thẳng sang Bộ sinh lời giải.
+- 🟡 **Nhánh AMBIGUOUS (Một phần bằng chứng):**
+  Vừa tinh lọc các legal strips nội bộ, vừa kích hoạt *Query Rewrite* để tìm kiếm mở rộng có kiểm soát trên các cổng thông tin pháp luật chính thống (`vbpl.vn`, `chinhphu.vn`, `moj.gov.vn`...). Sau đó, cơ chế *Evidence Merging* hợp nhất đa nguồn với ưu tiên: **Nguồn nội bộ chính thống > Nguồn bổ trợ ngoài web**.
+- 🔴 **Nhánh INCORRECT (Thiếu bằng chứng):**
+  Nhận diện corpus nội bộ không có dữ liệu, loại bỏ tài liệu không liên quan, viết lại truy vấn và tìm kiếm trên các cổng thông tin pháp luật chính thống.
 
-    HYBRID --> CHROMA
-    HYBRID --> BM25
-    HYBRID --> EVAL
-
-    EVAL -->|Correct| REFINE
-    EVAL -->|Ambiguous| REFINE
-    EVAL -->|Ambiguous| REWRITE
-    EVAL -->|Incorrect| REWRITE
-
-    REWRITE --> WEB
-    WEB --> GOV_WEB
-    REFINE --> MERGE
-    WEB --> MERGE
-    REFINE --> GEN
-    MERGE --> GEN
-    WEB --> GEN
-
-    GEN --> CITE
-    CITE --> SQL
-    CITE --> API
-
-    classDef l1Style fill:#E0F2FE,stroke:#0284C7,stroke-width:2px,color:#0369A1;
-    classDef l2Style fill:#F3E8FF,stroke:#9333EA,stroke-width:2px,color:#6B21A8;
-    classDef l3Style fill:#ECFDF5,stroke:#059669,stroke-width:2px,color:#047857;
-
-    class UI,CLI,API l1Style;
-    class ROUTER,HYBRID,EVAL,REFINE,REWRITE,WEB,MERGE,GEN,CITE l2Style;
-    class SQL,CHROMA,BM25,GOV_WEB l3Style;
-```
+### Giai đoạn 6: Sinh Lời Giải & Kiểm Định Trích Dẫn (Citation Validator)
+1. **Bộ Sinh Lời Giải (Structured Generator):**
+   - Áp dụng Prompt ràng buộc nghiêm ngặt: Chỉ kết luận khi có bằng chứng.
+   - Trả về đúng định dạng JSON Schema: `answer`, danh sách `claims` kèm `source_ids`, và cờ `abstain`.
+2. **Kiểm định Trích dẫn Xác định (Deterministic Citation Validator):**
+   - Kiểm tra xác thực: Mọi `source_id` được trích dẫn phải tồn tại trong tập bằng chứng thực tế.
+   - Kiểm tra hiệu lực thời gian: Đối chiếu ngày tham chiếu `as_of_date` với ngày hết hiệu lực của văn bản.
+   - Nếu phát hiện vi phạm hoặc nguồn bịa đặt: Lập tức chặn câu trả lời hoặc phát cảnh báo trích dẫn sai.
 
 ---
 
-## 3. Luồng Hoạt động Cốt lõi CRAG 3 Nhánh (Diagram 2)
+## 3. Lệnh Tự động Render Lại Hình ảnh Sơ đồ
 
-Trọng tâm của kỹ thuật Corrective RAG là **không bao giờ tin tưởng tuyệt đối vào kết quả truy hồi ban đầu**. Thay vào đó, bộ đánh giá độc lập phân loại tập ứng viên thành 3 trạng thái điều kiện:
-
-- 🟢 **CORRECT ($Score \ge T_{high} = 0.80$):** Bằng chứng nội bộ đầy đủ $\to$ Kích hoạt *Knowledge Refinement* bóc tách các legal strips cụ thể $\to$ Đưa vào Generator.
-- 🟡 **AMBIGUOUS ($T_{low} \le Score < T_{high}$):** Bằng chứng nội bộ có một phần $\to$ Vừa tinh lọc nội bộ, vừa viết lại truy vấn để tìm kiếm bổ sung trên web $\to$ *Evidence Merging* hợp nhất đa nguồn có ưu tiên.
-- 🔴 **INCORRECT ($Score \le T_{low} = 0.40$):** Bằng chứng nội bộ thiếu hụt $\to$ Loại bỏ tài liệu rác $\to$ Viết lại truy vấn $\to$ Gọi Controlled Web Search cổng thông tin nhà nước.
-
-![CRAG 3-Branch Workflow](images/crag_workflow.png)
-
-```mermaid
-%% crag_workflow
-flowchart TD
-    START([🚀 User Legal Query]) --> ROUTER{🧭 Router Phân loại}
-
-    %% Branch Database
-    ROUTER -->|Câu hỏi tra cứu số hiệu / hiệu lực| DB[🗄️ Query DB Tool]
-    DB --> CITE_VAL
-
-    %% Branch RAG
-    ROUTER -->|Câu hỏi tra cứu nội dung quy định| HYBRID[🔍 Hybrid Retrieval<br/>Dense BGE-M3 + Lexical BM25]
-    HYBRID --> RRF[⚡ RRF Fusion k=60<br/>Top-20 Candidates]
-    RRF --> EVAL[⚖️ Retrieval Evaluator<br/>Cross-Encoder Sigmoid Score]
-
-    %% 3-Branch Decision
-    EVAL -->|Score >= T_high 0.80| BR_CORRECT[🟢 Nhánh CORRECT<br/>Bằng chứng nội bộ đầy đủ]
-    EVAL -->|T_low <= Score < T_high| BR_AMBIGUOUS[🟡 Nhánh AMBIGUOUS<br/>Bằng chứng chưa đủ / một phần]
-    EVAL -->|Score <= T_low 0.40| BR_INCORRECT[🔴 Nhánh INCORRECT<br/>Corpus nội bộ thiếu hụt]
-
-    %% Correct Branch
-    BR_CORRECT --> REFINE[✂️ Knowledge Refinement<br/>Chia nhỏ thành Legal Strips<br/>Lọc Score >= 0.40]
-    REFINE --> GEN[📝 Structured Generator<br/>JSON Schema: answer + claims + abstain]
-
-    %% Ambiguous Branch
-    BR_AMBIGUOUS --> REFINE_AMB[✂️ Refine Internal Strips]
-    BR_AMBIGUOUS --> REWRITE_AMB[✏️ Query Rewrite]
-    REWRITE_AMB --> WEB_AMB[🌐 Controlled Web Search<br/>vbpl.vn, chinhphu.vn...]
-    WEB_AMB --> SELECT_WEB_AMB[🔍 Select External Strips]
-    REFINE_AMB --> MERGE[🔗 Evidence Merging<br/>Ưu tiên: Nội bộ > Nguồn ngoài]
-    SELECT_WEB_AMB --> MERGE
-    MERGE --> GEN
-
-    %% Incorrect Branch
-    BR_INCORRECT --> REWRITE_INC[✏️ Query Rewrite]
-    REWRITE_INC --> WEB_INC[🌐 Controlled Web Search]
-    WEB_INC --> SELECT_WEB_INC[🔍 Select External Strips]
-    SELECT_WEB_INC --> GEN
-
-    %% Generation and Validation
-    GEN --> CITE_VAL{🛡️ Citation Validator<br/>Kiểm tra xác định}
-    CITE_VAL -->|source_id tồn tại & Còn hiệu lực| OK([✅ Trả lời Thành công kèm Citations])
-    CITE_VAL -->|Vi phạm / Bịa đặt / Hết hiệu lực| BLOCK([⚠️ Báo lỗi Trích dẫn / Cảnh báo])
-
-    classDef startStyle fill:#3B82F6,stroke:#1D4ED8,stroke-width:2px,color:#FFFFFF;
-    classDef routerStyle fill:#8B5CF6,stroke:#6D28D9,stroke-width:2px,color:#FFFFFF;
-    classDef correctStyle fill:#DCFCE7,stroke:#16A34A,stroke-width:2px,color:#15803D;
-    classDef ambStyle fill:#FEF3C7,stroke:#D97706,stroke-width:2px,color:#B45309;
-    classDef incStyle fill:#FEE2E2,stroke:#DC2626,stroke-width:2px,color:#B91C1C;
-    classDef genStyle fill:#F3E8FF,stroke:#7E22CE,stroke-width:2px,color:#581C87;
-    classDef valStyle fill:#FCE7F3,stroke:#DB2777,stroke-width:2px,color:#9D174D;
-    classDef endStyle fill:#059669,stroke:#047857,stroke-width:2px,color:#FFFFFF;
-
-    class START startStyle;
-    class ROUTER routerStyle;
-    class BR_CORRECT,REFINE correctStyle;
-    class BR_AMBIGUOUS,REFINE_AMB,REWRITE_AMB,WEB_AMB,SELECT_WEB_AMB,MERGE ambStyle;
-    class BR_INCORRECT,REWRITE_INC,WEB_INC,SELECT_WEB_INC incStyle;
-    class GEN genStyle;
-    class CITE_VAL,BLOCK valStyle;
-    class OK endStyle;
-```
-
----
-
-## 4. Phân tích Chi tiết Từng Node Xử lý
-
-| Tên Node | Module thực thi | Chức năng chi tiết và Quy tắc vận hành |
-|---|---|---|
-| `router` | `agent/nodes.py` | Kiểm tra regex số hiệu văn bản và từ khóa hiệu lực. Nếu tra cứu hiệu lực/ngày ban hành $\to$ chuyển `db`; nếu chào hỏi ngắn $\to$ `general`; còn lại $\to$ `rag`. |
-| `query_db` | `tools/database.py` | Truy vấn trực tiếp các bảng quan hệ SQLite (`legal_documents`, `legal_relations`) để lấy tình trạng hiệu lực và văn bản sửa đổi/bổ sung/thay thế. |
-| `hybrid_retrieve` | `retrieval/` | Chạy đồng thời `dense_retrieve` (Chroma vector) và `bm25_retrieve` (rank-bm25), sau đó kết hợp bằng giải thuật Reciprocal Rank Fusion ($k=60$) tạo danh sách Top-20. |
-| `evaluate_retrieval` | `retrieval/reranker.py` | Sử dụng Cross-Encoder tính relevance score chuẩn hóa hàm Sigmoid vào $[0, 1]$. So sánh điểm tối đa với hai ngưỡng $(T_{low}=0.40, T_{high}=0.80)$ để rẽ 3 nhánh. |
-| `refine_internal_node` | `retrieval/refine.py` | Bóc tách từng Điều/Khoản thành các *Legal Strips* độc lập, chấm lại điểm liên quan và chỉ giữ lại các strip có điểm $\ge \text{INTERNAL\_STRIP\_MIN} = 0.40$. |
-| `rewrite_query_node` | `agent/nodes.py` | Loại bỏ từ ngữ thừa trong câu hỏi tự nhiên (như *"cho tôi hỏi"*, *"theo quy định hiện hành thì"*...), chuẩn hóa thành từ khóa chuyên ngành để tìm kiếm web chính xác. |
-| `web_search_node` | `tools/web_search.py` | Thực thi tìm kiếm trên DuckDuckGo với bộ lọc tên miền công quyền cho phép (`vbpl.vn`, `vanban.chinhphu.vn`, `moj.gov.vn`, `chinhphu.vn`, `thuvienphapluat.vn`). |
-| `select_external_node` | `retrieval/refine.py` | Tải trang hoặc trích xuất snippet từ web, phân tách thành các legal strips và chấm điểm chọn lọc các strip đạt chuẩn. |
-| `merge_evidence_node` | `retrieval/refine.py` | Hợp nhất danh sách bằng chứng nội bộ và ngoài web, khử trùng lặp theo locator, áp dụng độ ưu tiên: **Nội bộ chính thống (priority=2) > Nguồn bổ trợ ngoài (priority=1)**. |
-| `generate_answer` | `agent/nodes.py` | Sử dụng prompt ràng buộc nghiêm ngặt (Listing 3.14), ép định dạng JSON Schema gồm `answer`, `claims` có gắn kèm `source_ids`, và cờ `abstain` khi không đủ căn cứ. |
-| `validate_citations_node`| `legal/citations.py` | Đối chiếu từng `source_id` được trích dẫn với tập bằng chứng thực tế; kiểm tra văn bản có còn hiệu lực tại ngày tham chiếu `as_of_date` hay không. |
-
----
-
-## 5. Cơ chế Session Memory & Cách ly Tuyệt đối (Diagram 3)
-
-### 3 Cấp độ Memory:
-1. **Tier 1 — Working Memory (`AgentState`):** Duy trì trong RAM suốt 1 turn truy vấn.
-2. **Tier 2 — Episodic Memory (`query_logs` SQLite):** Lưu vết tuần tự mọi câu hỏi, câu trả lời, route và action đã chọn.
-3. **Tier 3 — Semantic Profile (`client_memories` SQLite):** Ghi nhớ thuộc tính bền vững của doanh nghiệp chỉ qua 5 thuộc tính được phép trong `ALLOWED_MEMORY_KEYS`:
-   - `business_type`: Loại hình (TNHH, Cổ phần...)
-   - `industry`: Ngành nghề (Xây dựng, Bán lẻ...)
-   - `province`: Địa bàn (Hà Nội, TP.HCM, Long An...)
-   - `frequent_topic`: Lĩnh vực hay hỏi (Lao động, Hợp đồng...)
-   - `preferred_answer`: Phong cách mong muốn (Ngắn gọn, Chi tiết...)
-
-![Session Memory Architecture](images/memory_isolation.png)
-
-```mermaid
-%% memory_isolation
-graph TB
-    subgraph CLIENT_A ["CLIENT A (Browser 1 - localStorage)"]
-        CA_ID["client_id: client_alpha"]
-        CA_ACT["'Doanh nghiệp TNHH tại Long An, muốn hỏi hợp đồng thử việc'"]
-    end
-
-    subgraph CLIENT_B ["CLIENT B (Browser 2 - Isolated)"]
-        CB_ID["client_id: client_beta"]
-        CB_ACT["'Công ty tôi cần lưu ý gì khi ký hợp đồng?'"]
-    end
-
-    subgraph BACKEND ["FASTAPI GATEWAY & AGENT CORE"]
-        GATEWAY["🚪 FastAPI Gateway<br/>(Extract client_id & session_id)"]
-        EXTRACTOR["⚙️ Memory Extractor<br/>(Enforce ALLOWED_MEMORY_KEYS)"]
-        GUARD["🛡️ Memory Guardrail<br/>Bối cảnh Client != Căn cứ Pháp lý"]
-        CORE["🤖 LangGraph CRAG Core<br/>(Bắt buộc truy hồi văn bản hiện hành)"]
-    end
-
-    subgraph STORAGE ["SQLITE APP.DB (STRICT ISOLATION)"]
-        subgraph MEM_A ["Partition Client Alpha"]
-            A_PROF["client_memories (Alpha)<br/>• business_type: TNHH<br/>• province: Long An"]
-            A_LOGS["query_logs (Alpha)"]
-        end
-        subgraph MEM_B ["Partition Client Beta"]
-            B_PROF["client_memories (Beta)<br/>(RỖNG / KHÔNG CÓ DỮ LIỆU)"]
-            B_LOGS["query_logs (Beta)"]
-        end
-    end
-
-    CA_ID --> GATEWAY
-    CA_ACT --> GATEWAY
-    CB_ID -.->|Không truy cập dữ liệu Alpha| GATEWAY
-
-    GATEWAY --> EXTRACTOR
-    EXTRACTOR -->|Ghi hồ sơ Alpha| A_PROF
-    EXTRACTOR --> GUARD
-
-    GUARD -->|Chỉ dùng giải nghĩa đại từ| CORE
-    CORE --> A_LOGS
-
-    B_PROF -.->|Cross-client Contamination = 0| GATEWAY
-
-    classDef clientStyle fill:#EFF6FF,stroke:#3B82F6,stroke-width:2px,color:#1E40AF;
-    classDef gateStyle fill:#F5F3FF,stroke:#8B5CF6,stroke-width:2px,color:#5B21B6;
-    classDef storeA fill:#ECFDF5,stroke:#10B981,stroke-width:2px,color:#065F46;
-    classDef storeB fill:#FEF2F2,stroke:#EF4444,stroke-width:2px,color:#991B1B;
-
-    class CA_ID,CA_ACT,CB_ID,CB_ACT clientStyle;
-    class GATEWAY,EXTRACTOR,GUARD,CORE gateStyle;
-    class A_PROF,A_LOGS storeA;
-    class B_PROF,B_LOGS storeB;
-```
-
----
-
-## 6. Tái lập Hình ảnh Sơ đồ từ Mermaid
-
-Hệ thống đã xây dựng sẵn công cụ `scripts/render_mermaid.py` để tự động render toàn bộ sơ đồ Mermaid trong tài liệu này thành các file ảnh PNG và SVG chất lượng cao:
+Sơ đồ `docs/images/workflow.png` và `docs/images/workflow.svg` được tạo từ file định nghĩa `docs/workflow.mmd`.  
+Khi cần chỉnh sửa hoặc render lại ảnh với nền trắng chuẩn, chạy lệnh:
 
 ```bash
-# Render toàn bộ sơ đồ trong WORKFLOW.md sang thư mục docs/images/
-python scripts/render_mermaid.py docs/WORKFLOW.md --output-dir docs/images
+.venv/bin/python scripts/render_mermaid.py docs/workflow.mmd --output-dir docs/images
 ```
-
-Các file ảnh kết quả sẽ được tạo tại:
-- `docs/images/arch_3layer.png` & `arch_3layer.svg`
-- `docs/images/crag_workflow.png` & `crag_workflow.svg`
-- `docs/images/memory_isolation.png` & `memory_isolation.svg`
