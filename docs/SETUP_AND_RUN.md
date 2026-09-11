@@ -208,21 +208,37 @@ python eval/run_eval.py
 
 ---
 
-## 9. Khởi chạy FastAPI RESTful Gateway & Giao diện Web UI (Layer 1)
+## 9. Khởi chạy FastAPI Backend & Giao diện Next.js Web UI (Layer 1)
 
-Khởi động backend server và giao diện người dùng Web trực quan:
+Hệ thống cung cấp giao diện Web người dùng bằng **Next.js (TypeScript)** theo đúng đặc tả của đồ án:
 
+### Cách 1: Chạy Full Stack với FastAPI (Khuyến nghị)
+Sau khi Next.js được build tĩnh (`npm run build` xuất ra `frontend/out/`), FastAPI Gateway tự động host giao diện trực tiếp tại cổng 8000:
 ```bash
+# Khởi chạy FastAPI server
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
+- **Truy cập Web UI:** `http://localhost:8000/`
+- **Swagger API Documentation:** `http://localhost:8000/docs`
 
-- **Giao diện Web UI Trực quan:** Mở trình duyệt tại `http://localhost:8000/`  
-  Giao diện được thiết kế theo phong cách hiện đại của **DeepSeek Harness** và **Hermes Agent**:
-  - Khung chat hai chiều render Markdown và thẻ căn cứ trích dẫn tím nổi bật.
-  - Sidebar quản lý phiên hội thoại, hồ sơ Semantic Memory doanh nghiệp và kho văn bản.
-  - **Execution Trace Drawer (Bảng Vết Thực Thi):** Hiển thị trực quan Route đã chọn, Action CRAG (Correct 🟢, Ambiguous 🟡, Incorrect 🔴), Trạng thái trích dẫn và Bảng bằng chứng (*Evidence Cards*) kèm điểm số relevance.
-- **Swagger UI Tài liệu API:** `http://localhost:8000/docs`
-- **OpenAPI Schema JSON:** `http://localhost:8000/openapi.json`
+### Cách 2: Chạy Next.js ở chế độ Development (Hot Reload)
+Nếu bạn muốn tùy biến giao diện với tính năng Hot Module Reload (HMR):
+```bash
+# Terminal 1: Chạy backend FastAPI
+uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Terminal 2: Chạy Next.js Dev Server
+cd frontend
+npm run dev    # hoặc bun run dev
+```
+- **Truy cập Next.js Dev Server:** `http://localhost:3000/`
+- Giao diện tự động kết nối với API backend tại cổng 8000.
+
+### Tính năng Nổi bật của Giao diện Next.js:
+- **Khung chat tương tác:** Render Markdown mượt mà, định dạng nổi bật các thẻ trích dẫn căn cứ pháp luật tím (`[DOC_...]`).
+- **Thanh chọn ngày hiệu lực (`as_of_date`):** Cho phép người dùng kiểm tra hiệu lực pháp lý tại bất kỳ mốc thời gian nào.
+- **Sidebar:** Quản lý phiên, hiển thị hồ sơ Semantic Memory và danh mục văn bản nội bộ.
+- **Bảng Vết Thực Thi (Execution Trace Drawer):** Theo phong cách DeepSeek Harness & Hermes Agent, hiển thị trực quan Route, CRAG Action, Báo cáo trích dẫn, và các thẻ Evidence Cards kèm điểm số relevance.
 ### Các Endpoints chính:
 
 | Phương thức | Endpoint | Chức năng |
