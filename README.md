@@ -130,13 +130,13 @@ python main.py
 python eval/run_eval.py
 ```
 
-### Bước 7: Khởi chạy FastAPI Backend Server
+### Bước 7: Khởi chạy FastAPI Backend Server & Web UI
 ```bash
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
-- Swagger API Docs: `http://localhost:8000/docs`
-- Endpoint Chat: `POST http://localhost:8000/api/chat`
-
+- **Giao diện Web UI Trực quan:** Mở trình duyệt tại `http://localhost:8000/` (tích hợp khung chat Markdown, sidebar quản lý phiên hội thoại, hồ sơ doanh nghiệp và Bảng Vết Thực Thi Execution Trace Drawer theo phong cách DeepSeek Harness / Hermes Agent).
+- **Swagger API Docs:** `http://localhost:8000/docs`
+- **Endpoint Chat REST API:** `POST http://localhost:8000/api/chat`
 ---
 
 ## 📊 5. Kết quả Đo kiểm Thực nghiệm (Held-out Test Set 40 câu)

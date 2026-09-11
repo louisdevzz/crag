@@ -208,17 +208,21 @@ python eval/run_eval.py
 
 ---
 
-## 9. Khởi chạy FastAPI RESTful Gateway (Layer 1 Backend)
+## 9. Khởi chạy FastAPI RESTful Gateway & Giao diện Web UI (Layer 1)
 
-Khởi động backend server hỗ trợ giao diện người dùng Web hoặc Next.js:
+Khởi động backend server và giao diện người dùng Web trực quan:
 
 ```bash
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-- **Swagger UI Tài liệu API:** Mở trình duyệt tại `http://localhost:8000/docs`
+- **Giao diện Web UI Trực quan:** Mở trình duyệt tại `http://localhost:8000/`  
+  Giao diện được thiết kế theo phong cách hiện đại của **DeepSeek Harness** và **Hermes Agent**:
+  - Khung chat hai chiều render Markdown và thẻ căn cứ trích dẫn tím nổi bật.
+  - Sidebar quản lý phiên hội thoại, hồ sơ Semantic Memory doanh nghiệp và kho văn bản.
+  - **Execution Trace Drawer (Bảng Vết Thực Thi):** Hiển thị trực quan Route đã chọn, Action CRAG (Correct 🟢, Ambiguous 🟡, Incorrect 🔴), Trạng thái trích dẫn và Bảng bằng chứng (*Evidence Cards*) kèm điểm số relevance.
+- **Swagger UI Tài liệu API:** `http://localhost:8000/docs`
 - **OpenAPI Schema JSON:** `http://localhost:8000/openapi.json`
-
 ### Các Endpoints chính:
 
 | Phương thức | Endpoint | Chức năng |

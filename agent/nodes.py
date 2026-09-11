@@ -14,39 +14,29 @@ from retrieval.dense import dense_retrieve
 from retrieval.fusion import rrf_merge
 from retrieval.refine import merge_evidence, refine_external, refine_internal
 from retrieval.reranker import decide_crag_action, rerank
-from tools.database import handle_database_query
-from tools.web_search import fetch_external_evidence, search_official_web
-
+from agent.router import get_semantic_router
+from retrieval.rewriter import get_query_rewriter
+from tools.registry import get_tool_registry
 
 def route_question(state: AgentState) -> Dict[str, Any]:
-    """Route user query to database metadata, full CRAG retrieval, or general greeting."""
+    """Route user query dynamically via SemanticRouter (Intent Classification)."""
     query = state.get("query", "").strip()
-    query_lower = query.lower()
-
-    # Database metadata routing criteria
-    db_triggers = [
-        "còn hiệu lực", "hết hiệu lực", "ngày có hiệu lực", "ngày ban hành",
-        "thay thế văn bản", "hướng dẫn văn bản", "số hiệu", "văn bản số"
-    ]
-    doc_number_pattern = re.compile(r"\b\d{1,4}/\d{4}/[A-ZĐa-zđ0-9\-_]+\b")
-
-    if any(t in query_lower for t in db_triggers) or doc_number_pattern.search(query):
-        return {"route": "database"}
-
-    # General greeting
-    greetings = ["xin chào", "hello", "hi ", "chào bạn", "bạn là ai", "hướng dẫn sử dụng"]
-    if any(query_lower.startswith(g) or query_lower == g for g in greetings) and len(query.split()) <= 4:
-        return {"route": "general"}
-
-    return {"route": "rag"}
-
+    router = get_semantic_router()
+    decision = router.route(query)
+    return {
+        "route": decision.route,
+        "trace_meta": {
+            "routing_reasoning": decision.reasoning,
+            "detected_docs": decision.detected_document_numbers,
+        }
+    }
 
 def query_db(state: AgentState) -> Dict[str, Any]:
-    """Execute database query tool for structured metadata inspection."""
+    """Execute database query tool via ToolRegistry."""
     query = state.get("query", "")
     as_of_date = state.get("as_of_date")
-    result = handle_database_query(query, as_of_date=as_of_date)
-
+    tool_res = get_tool_registry().execute("database_query", query=query, as_of_date=as_of_date)
+    result = tool_res.data if tool_res.success and tool_res.data else {}
     docs = result.get("found_documents", [])
     if docs:
         doc = docs[0]
@@ -155,34 +145,23 @@ def refine_internal_node(state: AgentState) -> Dict[str, Any]:
 
 
 def rewrite_query_node(state: AgentState) -> Dict[str, Any]:
-    """Query Rewrite: transform natural language query into high-precision search query."""
+    """Query Rewrite: transform query via dynamic QueryRewriter."""
     query = state.get("query", "")
-
-    # Rule-based legal query optimizer
-    stop_phrases = [
-        "cho tôi hỏi", "vui lòng cho biết", "hãy cho biết", "theo quy định hiện hành thì",
-        "theo pháp luật", "như thế nào", "bao gồm những gì", "là gì", "không", "có được"
-    ]
-    optimized = query
-    for p in stop_phrases:
-        optimized = re.sub(re.escape(p), " ", optimized, flags=re.IGNORECASE)
-
-    optimized = " ".join(optimized.split())
-    if not optimized:
-        optimized = query
-
-    # Append keyword indicator for legal search
-    search_query = f"quy định {optimized}".strip()
-
-    return {"rewritten_query": search_query}
+    rewriter = get_query_rewriter()
+    rewritten = rewriter.rewrite(query)
+    return {
+        "rewritten_query": rewritten.search_query,
+        "trace_meta": {
+            "legal_entities": rewritten.legal_entities,
+        }
+    }
 
 
 def web_search_node(state: AgentState) -> Dict[str, Any]:
-    """Controlled Web Search: fetch external documents from official government portals."""
+    """Controlled Web Search: fetch external documents via ToolRegistry."""
     rewritten_query = state.get("rewritten_query") or state.get("query", "")
-    candidates = search_official_web(rewritten_query, max_results=4)
-    external_strips = fetch_external_evidence(candidates, max_chars=1500)
-
+    tool_res = get_tool_registry().execute("controlled_web_search", query=rewritten_query, max_results=4)
+    external_strips = tool_res.data if tool_res.success and tool_res.data else []
     return {"external_evidence": external_strips}
 
 

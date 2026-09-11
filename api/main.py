@@ -194,3 +194,11 @@ def list_documents() -> List[Dict[str, Any]]:
             """
         )
         return [dict(r) for r in cur.fetchall()]
+
+
+# Mount Web UI (Inspired by DeepSeek Harness / Hermes Agent)
+from fastapi.staticfiles import StaticFiles
+
+frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
+if frontend_dir.exists():
+    app.mount("/", StaticFiles(directory=str(frontend_dir), html=True), name="frontend")

@@ -1,153 +1,230 @@
-"""Semantic Memory Extractor with Strict Allow-List Governance."""
+"""Schema-Driven Dynamic Semantic Memory Extractor.
+
+Modeled after Hermes Agent memory wiki and OpenClaw dynamic entity extraction.
+Eliminates brittle hardcoded lists of provinces and industries in favor of
+schema-driven semantic extraction with grammar-based generalized pattern fallback.
+"""
 from __future__ import annotations
 
 import json
 import re
 from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel, Field
+
 from config import ALLOWED_MEMORY_KEYS
 from llm import get_chat_model
 from memory.store import get_memory_store
 
 
-PROVINCES = [
-    "Hà Nội", "Hồ Chí Minh", "TP.HCM", "Long An", "Bình Dương", "Đồng Nai",
-    "Đà Nẵng", "Hải Phòng", "Cần Thơ", "Quảng Ninh", "Bắc Ninh", "Khánh Hòa",
-    "Bà Rịa - Vũng Tàu", "Thừa Thiên Huế", "Lâm Đồng", "Tiền Giang",
+class MemoryFieldSpec(BaseModel):
+    """Specification of a permissible memory attribute."""
+    key: str
+    display_name: str
+    description: str
+    examples: List[str] = Field(default_factory=list)
+
+
+# Schema definitions for allowed memory fields
+MEMORY_FIELD_SPECS: Dict[str, MemoryFieldSpec] = {
+    "business_type": MemoryFieldSpec(
+        key="business_type",
+        display_name="Loại hình doanh nghiệp",
+        description="Mô hình pháp lý của doanh nghiệp (TNHH, Cổ phần, Doanh nghiệp tư nhân, Hợp danh...)",
+        examples=["Công ty TNHH", "Công ty Cổ phần", "Doanh nghiệp tư nhân"],
+    ),
+    "province": MemoryFieldSpec(
+        key="province",
+        display_name="Địa bàn hoạt động / Trụ sở",
+        description="Tỉnh, thành phố hoặc địa bàn đặt trụ sở chính của doanh nghiệp tại Việt Nam",
+        examples=["Hà Nội", "TP.HCM", "Long An", "Bình Dương", "Đà Nẵng"],
+    ),
+    "industry": MemoryFieldSpec(
+        key="industry",
+        display_name="Ngành nghề kinh doanh",
+        description="Lĩnh vực hoạt động sản xuất, kinh doanh chính của doanh nghiệp",
+        examples=["Xây dựng", "Thương mại điện tử", "Công nghệ thông tin", "Dệt may", "Logistics"],
+    ),
+    "frequent_topic": MemoryFieldSpec(
+        key="frequent_topic",
+        display_name="Chủ đề quan tâm thường xuyên",
+        description="Nhóm văn bản hoặc chế độ pháp lý mà doanh nghiệp thường xuyên tra cứu",
+        examples=["Pháp luật lao động", "Đăng ký doanh nghiệp", "Bảo hiểm xã hội", "Thuế"],
+    ),
+    "preferred_answer": MemoryFieldSpec(
+        key="preferred_answer",
+        display_name="Phong cách trả lời ưa thích",
+        description="Yêu cầu định dạng câu trả lời mong muốn của người dùng",
+        examples=["Ngắn gọn", "Chi tiết kèm viện dẫn điều khoản", "Bảng biểu tóm tắt"],
+    ),
+}
+
+
+class ExtractedMemoryItem(BaseModel):
+    """Structured memory attribute extracted from conversation."""
+    key: str = Field(..., description="Key belonging to ALLOWED_MEMORY_KEYS")
+    value: str = Field(..., min_length=1, description="Extracted entity value")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    reasoning: Optional[str] = None
+
+
+def extract_memories_dynamically(text: str) -> List[ExtractedMemoryItem]:
+    """Extract memory attributes dynamically using LLM structured output or generalized grammar patterns."""
+    text_clean = text.strip()
+    if not text_clean:
+        return []
+
+    # 1. Primary: LLM structured entity extraction if model is available
+    llm = get_chat_model()
+    if llm is not None:
+        llm_results = _extract_with_llm(llm, text_clean)
+        if llm_results:
+            return llm_results
+
+    # 2. Fallback: Generalized grammar-based extraction (zero hardcoded city/industry dictionaries)
+    return _extract_with_grammar_patterns(text_clean)
+
+
+def _extract_with_llm(llm: Any, text: str) -> List[ExtractedMemoryItem]:
+    """Extract entities adhering to MEMORY_FIELD_SPECS via LLM."""
+    specs_summary = "\n".join([
+        f"- {s.key} ({s.display_name}): {s.description}"
+        for s in MEMORY_FIELD_SPECS.values()
+    ])
+
+    prompt = f"""Bạn là bộ trích xuất hồ sơ doanh nghiệp (Entity Memory Extractor) cho trợ lý pháp lý.
+Hãy đọc câu nói của người dùng và trích xuất các thông tin bền vững nếu có:
+
+DANH MỤC THUỘC TÍNH CHO PHÉP:
+{specs_summary}
+
+NGUYÊN TẮC BẢO MẬT BẮT BUỘC:
+1. Tuyệt đối KHÔNG trích xuất mật khẩu, số CCCD/CMND, mã số thuế bí mật, bí mật kinh doanh.
+2. Chỉ trích xuất khi người dùng tự nêu thông tin về hoàn cảnh công ty/doanh nghiệp của họ.
+3. Nếu không có thông tin thuộc danh mục trên, trả về mảng rỗng [].
+
+Định dạng JSON đầu ra:
+[
+  {{"key": "business_type", "value": "Công ty TNHH", "confidence": 0.95}},
+  {{"key": "province", "value": "Long An", "confidence": 0.90}}
 ]
 
-BUSINESS_TYPES = [
-    ("công ty tnhh một thành viên", "Công ty TNHH 1 thành viên"),
-    ("công ty tnhh 1 thành viên", "Công ty TNHH 1 thành viên"),
-    ("công ty tnhh hai thành viên", "Công ty TNHH 2 thành viên trở lên"),
-    ("công ty tnhh 2 thành viên", "Công ty TNHH 2 thành viên trở lên"),
-    ("công ty tnhh", "Công ty TNHH"),
-    ("tnhh", "Công ty TNHH"),
-    ("công ty cổ phần", "Công ty Cổ phần"),
-    ("cổ phần", "Công ty Cổ phần"),
-    ("doanh nghiệp tư nhân", "Doanh nghiệp tư nhân"),
-    ("công ty hợp danh", "Công ty Hợp danh"),
-]
+CÂU NÓI: "{text}"
+"""
+    try:
+        res = llm.invoke(prompt)
+        raw = res.content if hasattr(res, "content") else str(res)
+        m = re.search(r"\[[\s\S]*\]", raw)
+        if m:
+            items = json.loads(m.group(0))
+            validated = []
+            for item in items:
+                k = item.get("key", "").strip().lower()
+                v = item.get("value", "").strip()
+                if k in ALLOWED_MEMORY_KEYS and v:
+                    validated.append(ExtractedMemoryItem(
+                        key=k,
+                        value=v,
+                        confidence=float(item.get("confidence", 0.85)),
+                    ))
+            return validated
+    except Exception:
+        pass
 
-INDUSTRIES = [
-    ("xây dựng", "Xây dựng"),
-    ("thương mại điện tử", "Thương mại điện tử"),
-    ("bán lẻ", "Bán lẻ"),
-    ("sản xuất", "Sản xuất chế biến"),
-    ("công nghệ thông tin", "Công nghệ thông tin / Phần mềm"),
-    ("logistics", "Vận tải / Logistics"),
-    ("du lịch", "Dịch vụ du lịch"),
-    ("y tế", "Y tế / Dược phẩm"),
-    ("giáo dục", "Giáo dục / Đào tạo"),
-]
+    return []
 
 
-def extract_memories_heuristic(text: str) -> List[Dict[str, Any]]:
-    """Rule-based pattern extraction for corporate entity attributes."""
+def _extract_with_grammar_patterns(text: str) -> List[ExtractedMemoryItem]:
+    """Generalized grammar and entity pattern matching without hardcoded entity dictionaries."""
     extracted = []
     text_lower = text.lower()
 
-    # 1. Business Type
-    for pattern, normalized in BUSINESS_TYPES:
-        if pattern in text_lower:
-            extracted.append({
-                "key": "business_type",
-                "value": normalized,
-                "confidence": 0.95,
-            })
-            break
+    # Pattern 1: Business Type (generalized recognition of company legal structures)
+    # Matches: công ty TNHH (1 hoặc 2 thành viên), công ty cổ phần, doanh nghiệp tư nhân, hợp danh
+    bt_match = re.search(
+        r"(?:doanh nghiệp|công ty)\s+(tnhh(?:\s+[0-9a-zA-Z\s]+thành viên)?|cổ phần|hợp danh|tư nhân|liên doanh)",
+        text_lower,
+    )
+    if bt_match:
+        matched_str = bt_match.group(0)
+        norm_val = "Công ty TNHH"
+        if "cổ phần" in matched_str:
+            norm_val = "Công ty Cổ phần"
+        elif "tư nhân" in matched_str:
+            norm_val = "Doanh nghiệp tư nhân"
+        elif "hợp danh" in matched_str:
+            norm_val = "Công ty Hợp danh"
+        elif "tnhh" in matched_str:
+            if "1" in matched_str or "một" in matched_str:
+                norm_val = "Công ty TNHH 1 thành viên"
+            elif "2" in matched_str or "hai" in matched_str:
+                norm_val = "Công ty TNHH 2 thành viên trở lên"
+            else:
+                norm_val = "Công ty TNHH"
 
-    # 2. Province / Location
-    for prov in PROVINCES:
-        p_lower = prov.lower()
-        if f"tại {p_lower}" in text_lower or f"ở {p_lower}" in text_lower or f"tỉnh {p_lower}" in text_lower or f"tp {p_lower}" in text_lower:
-            extracted.append({
-                "key": "province",
-                "value": prov,
-                "confidence": 0.90,
-            })
-            break
+        extracted.append(ExtractedMemoryItem(
+            key="business_type",
+            value=norm_val,
+            confidence=0.95,
+            reasoning="Phát hiện qua cấu trúc loại hình doanh nghiệp",
+        ))
 
-    # 3. Industry
-    for ind_kw, ind_norm in INDUSTRIES:
-        if ind_kw in text_lower:
-            extracted.append({
-                "key": "industry",
-                "value": ind_norm,
-                "confidence": 0.85,
-            })
-            break
+    # Pattern 2: Geographic Proper Noun (captures ANY capitalized province/city name after locative prepositions)
+    # e.g.: "tại Long An", "ở Hà Nội", "trụ sở tại Đà Nẵng", "tại Bình Dương", "ở Cà Mau"
+    # Uses Vietnamese capitalized word sequence recognition
+    loc_match = re.search(
+        r"(?:tại|ở|trụ sở tại|địa bàn|khu vực|tỉnh|thành phố|tp\.?)\s+([A-ZÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ][a-zàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]+(?:\s+[A-ZÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ][a-zàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]+)*)",
+        text,
+    )
+    if loc_match:
+        province_val = loc_match.group(1).strip()
+        # Exclude common false positives
+        if province_val.lower() not in ("việt nam", "công ty", "doanh nghiệp", "bộ luật", "luật"):
+            extracted.append(ExtractedMemoryItem(
+                key="province",
+                value=province_val,
+                confidence=0.90,
+                reasoning=f"Nhận diện địa danh ngữ pháp: {province_val}",
+            ))
 
-    # 4. Frequent Topic
-    if any(k in text_lower for k in ["lao động", "thử việc", "hợp đồng lao động", "sa thải", "lương"]):
-        extracted.append({
-            "key": "frequent_topic",
-            "value": "Pháp luật lao động",
-            "confidence": 0.80,
-        })
-    elif any(k in text_lower for k in ["thành lập", "đăng ký doanh nghiệp", "vốn điều lệ", "cổ đông", "điều lệ"]):
-        extracted.append({
-            "key": "frequent_topic",
-            "value": "Đăng ký & Quản trị doanh nghiệp",
-            "confidence": 0.80,
-        })
-    elif any(k in text_lower for k in ["bảo hiểm xã hội", "bhxh", "hưu trí", "thai sản", "ốm đau"]):
-        extracted.append({
-            "key": "frequent_topic",
-            "value": "Bảo hiểm xã hội",
-            "confidence": 0.80,
-        })
+    # Pattern 3: Industry / Domain
+    # Matches: "ngành xây dựng", "lĩnh vực bán lẻ", "hoạt động trong thương mại điện tử"
+    ind_match = re.search(r"(?:ngành|lĩnh vực|hoạt động trong(?:\s+mảng)?)\s+([A-Za-zÀ-ỹ\s]{3,30}?)(?=[,.;\?]|$|\s+muốn|\s+cần)", text, re.IGNORECASE)
+    if ind_match:
+        ind_val = ind_match.group(1).strip().capitalize()
+        extracted.append(ExtractedMemoryItem(
+            key="industry",
+            value=ind_val,
+            confidence=0.85,
+            reasoning=f"Nhận diện lĩnh vực kinh doanh: {ind_val}",
+        ))
+
+    # Pattern 4: Frequent Topic
+    topic_keywords = {
+        "Pháp luật lao động": ["lao động", "thử việc", "hợp đồng", "sa thải", "tiền lương", "nghỉ phép"],
+        "Đăng ký & Quản trị doanh nghiệp": ["thành lập", "đăng ký doanh nghiệp", "vốn điều lệ", "cổ đông", "hội đồng"],
+        "Bảo hiểm xã hội": ["bảo hiểm xã hội", "bhxh", "hưu trí", "thai sản", "ốm đau", "mai táng"],
+    }
+    for topic_name, keywords in topic_keywords.items():
+        if any(kw in text_lower for kw in keywords):
+            extracted.append(ExtractedMemoryItem(
+                key="frequent_topic",
+                value=topic_name,
+                confidence=0.80,
+            ))
+            break
 
     return extracted
 
 
 def extract_and_save_memories(client_id: str, text: str) -> List[Dict[str, Any]]:
-    """Extract semantic memories from user utterance and persist to client_memories."""
+    """Top-level pipeline function: extract dynamic memories and persist to store."""
     store = get_memory_store()
-    memories = extract_memories_heuristic(text)
+    items = extract_memories_dynamically(text)
 
-    # If LLM is available and heuristic got nothing, try LLM
-    if not memories:
-        llm = get_chat_model()
-        if llm is not None:
-            prompt = f"""Hãy đọc câu nói của người dùng và trích xuất thông tin hồ sơ doanh nghiệp nếu có.
-Chỉ trích xuất các thuộc tính nằm trong ALLOWED_MEMORY_KEYS sau:
-- business_type (e.g. Công ty TNHH, Công ty Cổ phần)
-- industry (e.g. Xây dựng, Bán lẻ)
-- province (e.g. Hà Nội, TP.HCM, Long An)
-- frequent_topic (e.g. Lao động, Doanh nghiệp)
-- preferred_answer (e.g. Ngắn gọn, Chi tiết)
-
-TUYỆT ĐỐI KHÔNG trích xuất mật khẩu, số CCCD/CMND, bí mật kinh doanh.
-Định dạng JSON mảng: [{{"key": "...", "value": "...", "confidence": 0.9}}]
-Nếu không có thông tin phù hợp, trả về mảng rỗng [].
-
-CÂU NÓI: {text}
-"""
-            try:
-                res = llm.invoke(prompt)
-                raw = res.content if hasattr(res, "content") else str(res)
-                m = re.search(r"\[[\s\S]*\]", raw)
-                if m:
-                    parsed = json.loads(m.group(0))
-                    for item in parsed:
-                        k = item.get("key", "").lower().strip()
-                        if k in ALLOWED_MEMORY_KEYS:
-                            memories.append({
-                                "key": k,
-                                "value": item.get("value", "").strip(),
-                                "confidence": float(item.get("confidence", 0.8)),
-                            })
-            except Exception:
-                pass
-
-    # Persist to database
     saved = []
-    for mem in memories:
-        k = mem["key"]
-        v = mem["value"]
-        conf = mem.get("confidence", 1.0)
-        if store.set_client_memory(client_id, k, v, confidence=conf):
-            saved.append(mem)
+    for item in items:
+        if store.set_client_memory(client_id, item.key, item.value, confidence=item.confidence):
+            saved.append(item.model_dump())
 
     return saved

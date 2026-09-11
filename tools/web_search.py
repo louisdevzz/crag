@@ -1,24 +1,64 @@
-"""Controlled Web Search Tool with Official Vietnamese Legal Domain Filtering."""
+"""Controlled Web Search Tool with Official Vietnamese Legal Domain Filtering.
+
+Modeled after Hermes Agent and OpenClaw web search tools.
+Enforces domain allow-list, cleans HTML chrome, and packages into standardized evidence strips.
+"""
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional
+import warnings
+from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
+from pydantic import BaseModel, Field
 
 from config import OFFICIAL_DOMAINS
+from tools.base import BaseLegalTool
+
+# Suppress duckduckgo rename warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="duckduckgo_search")
 
 
-def is_allowed_source(url: str) -> bool:
+class ControlledWebSearchInput(BaseModel):
+    """Input argument schema for controlled legal web search."""
+    query: str = Field(..., min_length=2, description="Optimized legal search query")
+    max_results: int = Field(default=4, ge=1, le=10, description="Max external candidates to retrieve")
+    allowed_domains: Optional[List[str]] = Field(default=None, description="Domain allow-list overrides")
+
+
+class ControlledWebSearchTool(BaseLegalTool):
+    """Tool for querying official Vietnamese government legal portals."""
+
+    name: str = "controlled_web_search"
+    description: str = "Tìm kiếm có kiểm soát trên các cổng thông tin pháp luật chính thống của nhà nước (vbpl.vn, chinhphu.vn, moj.gov.vn...)."
+    args_schema = ControlledWebSearchInput
+
+    def __init__(self, allowed_domains: Optional[Set[str]] = None):
+        self.allowed_domains = allowed_domains or OFFICIAL_DOMAINS
+
+    def execute(
+        self,
+        query: str,
+        max_results: int = 4,
+        allowed_domains: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Search and fetch verified legal web evidence."""
+        domains = set(allowed_domains) if allowed_domains else self.allowed_domains
+        candidates = search_official_web(query, max_results=max_results, allowed_domains=domains)
+        return fetch_external_evidence(candidates, max_chars=1500)
+
+
+def is_allowed_source(url: str, allowed_domains: Optional[Set[str]] = None) -> bool:
     """Validate whether an external URL belongs to approved Vietnamese legal portals."""
+    domains = allowed_domains or OFFICIAL_DOMAINS
     try:
         parsed = urlparse(url)
         host = parsed.netloc.lower()
         if ":" in host:
             host = host.split(":")[0]
-        return any(host == d or host.endswith("." + d) for d in OFFICIAL_DOMAINS)
+        return any(host == d or host.endswith("." + d) for d in domains)
     except Exception:
         return False
 
@@ -29,7 +69,6 @@ def clean_web_text(html_content: str) -> str:
     for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
         tag.decompose()
     text = soup.get_text(separator="\n")
-    # Clean whitespace
     lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
     return "\n".join(lines)
 
@@ -37,39 +76,24 @@ def clean_web_text(html_content: str) -> str:
 def search_official_web(
     query: str,
     max_results: int = 5,
+    allowed_domains: Optional[Set[str]] = None,
     timeout: int = 10,
 ) -> List[Dict[str, Any]]:
-    """Execute controlled web search restricted to official government legal domains.
-
-    Parameters
-    ----------
-    query : str
-        Legal search query (typically rewritten by Agent).
-    max_results : int
-        Maximum search hits to return.
-    timeout : int
-        HTTP timeout in seconds.
-
-    Returns
-    -------
-    list of dict
-        Validated external candidate pages.
-    """
+    """Execute controlled web search restricted to official government legal domains."""
+    domains = allowed_domains or OFFICIAL_DOMAINS
     candidates: List[Dict[str, Any]] = []
 
-    # Attempt live search via DuckDuckGo
     try:
         from duckduckgo_search import DDGS
 
         ddgs = DDGS()
-        # Constrain to allowed domains in query or post-filter
-        domain_filter = " OR ".join([f"site:{d}" for d in list(OFFICIAL_DOMAINS)[:3]])
+        domain_filter = " OR ".join([f"site:{d}" for d in list(domains)[:3]])
         full_query = f"{query} ({domain_filter})"
 
         raw_results = list(ddgs.text(full_query, max_results=max_results * 2))
         for r in raw_results:
             url = r.get("href") or r.get("link") or ""
-            if is_allowed_source(url):
+            if is_allowed_source(url, domains):
                 candidates.append({
                     "title": r.get("title", ""),
                     "url": url,
@@ -78,8 +102,7 @@ def search_official_web(
                 })
                 if len(candidates) >= max_results:
                     break
-    except Exception as e:
-        # Fallback to general query or graceful offline handling
+    except Exception:
         pass
 
     return candidates
@@ -109,7 +132,6 @@ def fetch_external_evidence(
                 if len(parsed) > 100:
                     text_content = parsed[:max_chars]
         except Exception:
-            # If network fetch fails, fall back to search snippet
             pass
 
         evidence_items.append({
@@ -118,13 +140,13 @@ def fetch_external_evidence(
             "heading": title,
             "text": text_content,
             "source_url": url,
-            "source_priority": 1,  # 1 = External auxiliary, 2 = Official internal
+            "source_priority": 1,
             "score": 0.0,
             "metadata": {
                 "document_title": title,
                 "source_url": url,
                 "is_external": True,
-            }
+            },
         })
 
     return evidence_items
