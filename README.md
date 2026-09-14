@@ -1,4 +1,4 @@
-# Legal CRAG Assistant V3 — Trợ lý Tuân thủ & Pháp lý Doanh nghiệp
+# Legal CRAG Assistant — Trợ lý Tuân thủ & Pháp lý Doanh nghiệp
 
 > **Hệ thống AI Agent hỗ trợ tra cứu pháp lý doanh nghiệp Việt Nam với cơ chế tự hiệu chỉnh truy hồi dựa trên Corrective RAG (CRAG) và Quản lý Session Memory 3 tầng.**  
 > Triển khai đầy đủ theo đặc tả kỹ thuật 18 bước trong tài liệu Thạc sĩ: `docs/AI_Agent_Corrective_RAG_Memory.pdf`.
@@ -12,7 +12,7 @@ Hệ thống được thiết kế theo **Kiến trúc 3 Layer Tách biệt**:
 - **Layer 1 — Interface & API:** Giao diện dòng lệnh chuyên nghiệp (CLI) và hạ tầng RESTful API (FastAPI) hỗ trợ trả lời, bảng trích dẫn citation xác định, quản lý phiên và hồ sơ client.
 - **Layer 2 — Agent & Correction:** Đồ thị trạng thái **LangGraph** điều phối toàn bộ workflow: Router phân luồng, Retrieval Evaluator chấm điểm relevance chuẩn hóa Sigmoid, 3 nhánh xử lý CRAG cốt lõi, Generator và Citation Validator.
 - **Layer 3 — Knowledge & Data:** SQLite (`app.db`) quản lý metadata văn bản và memory; ChromaDB quản lý Dense Vector Index; rank-bm25 quản lý Lexical Index; Reranker tính relevance; Controlled Web Search lọc tên miền công quyền chính thống.
-![Sơ đồ Toàn diện Luồng Hoạt động Legal CRAG Assistant V3](docs/images/workflow.png)
+![Sơ đồ Toàn diện Luồng Hoạt động Legal CRAG Assistant](docs/images/workflow.png)
 
 Hệ thống tuân thủ toàn diện các nguyên lý chuẩn của **[LangGraph Overview](https://docs.langchain.com/oss/python/langgraph/overview)**:
 - **State Schema (`AgentState`):** Shared scratchpad truyền dữ liệu giữa các node dạng TypedDict.
@@ -110,27 +110,33 @@ cp .env.example .env
 ```
 *(Nếu muốn dùng LLM bên ngoài như Groq, OpenAI hoặc OpenRouter, hãy điền API key tương ứng vào `.env`)*
 
-### Bước 3: Nạp dữ liệu vào Cơ sở Dữ liệu & Vector Store
+### Bước 3: Tải và Kiểm định Mô hình Thực tế (Embedding & Reranker)
+Tải trọng số mô hình từ Hugging Face Hub về bộ đệm cục bộ và kiểm định vector:
+```bash
+python scripts/pull_models.py
+```
+
+### Bước 4: Nạp dữ liệu vào Cơ sở Dữ liệu & Vector Store
 ```bash
 python ingest.py
 ```
 
-### Bước 4: Chạy 5 Kịch bản Demo Kiểm chuẩn (Table 3.2)
+### Bước 5: Chạy 5 Kịch bản Demo Kiểm chuẩn (Table 3.2)
 ```bash
 python main.py --demo
 ```
 
-### Bước 5: Chạy Trợ lý Tương tác qua Dòng lệnh (CLI Chat)
+### Bước 6: Chạy Trợ lý Tương tác qua Dòng lệnh (CLI Chat)
 ```bash
 python main.py
 ```
 
-### Bước 6: Chạy Bộ Đánh giá Benchmark Tự động (Chapter 4)
+### Bước 7: Chạy Bộ Đánh giá Benchmark Tự động (Chapter 4)
 ```bash
 python eval/run_eval.py
 ```
 
-### Bước 7: Khởi chạy FastAPI Backend Server & Web UI
+### Bước 8: Khởi chạy FastAPI Backend Server & Web UI
 ```bash
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 ```

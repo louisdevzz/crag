@@ -16,6 +16,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from config import (
     CONFIG,
     EMBEDDING_MODEL,
+    EMBEDDING_PROVIDER,
     OLLAMA_BASE_URL,
     OPENROUTER_BASE_URL,
 )
@@ -103,70 +104,67 @@ def get_chat_model(
         log.error("LLM provider=%s init FAILED (%s) -> falling back to offline synthesis", p, e)
         return None
 
-class FallbackDenseEmbeddings:
-    """Deterministic lightweight dense embeddings (384-dim) for offline/local execution.
-
-    Uses character n-grams and token hashing with L2-normalization to produce dense
-    vectors with genuine lexical-semantic cosine properties without external services.
-    """
-    def __init__(self, dim: int = 384):
-        self.dim = dim
-
-    def _embed(self, text: str) -> list[float]:
-        import hashlib
-        import math
-        vec = [0.0] * self.dim
-        tokens = text.lower().replace(",", " ").replace(".", " ").split()
-        if not tokens:
-            return vec
-        for idx, t in enumerate(tokens):
-            # Word hash
-            h = int(hashlib.md5(t.encode("utf-8")).hexdigest(), 16)
-            dim_idx = h % self.dim
-            weight = 1.0 / math.log2(idx + 2)
-            vec[dim_idx] += weight
-            # Character trigram hashes for subword sensitivity
-            for i in range(max(0, len(t) - 2)):
-                sub = t[i : i + 3]
-                sub_h = int(hashlib.sha256(sub.encode("utf-8")).hexdigest(), 16)
-                vec[sub_h % self.dim] += 0.5 * weight
-        # L2-normalize
-        norm = math.sqrt(sum(x * x for x in vec))
-        if norm > 0:
-            vec = [x / norm for x in vec]
-        return vec
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return [self._embed(t) for t in texts]
-
-    def embed_query(self, text: str) -> list[float]:
-        return self._embed(text)
-
 
 def get_embeddings(provider: Optional[str] = None, model: Optional[str] = None):
-    """Factory function to initialize text embedding models."""
-    p = (provider or os.getenv("EMBEDDING_PROVIDER", "ollama")).lower().strip()
-    m = model or EMBEDDING_MODEL
+    """Factory function to initialize real text embedding models.
 
-    if p == "ollama":
-        try:
-            import requests
-            resp = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=1)
-            if resp.status_code == 200:
-                from langchain_ollama import OllamaEmbeddings
-                log.info("Embeddings provider=ollama model=%s -> real OllamaEmbeddings initialized", m)
-                return OllamaEmbeddings(model=m, base_url=OLLAMA_BASE_URL)
-        except Exception as e:
-            log.warning("Embeddings provider=ollama unreachable (%s), trying next backend", e)
+    Strictly enforces real providers and models without fallback to dummy hashing vectors.
+    Supported providers:
+    - 'huggingface' / 'sentence-transformers': Uses local weights (e.g. BAAI/bge-m3)
+    - 'openai': Uses OpenAI text-embedding-3-* via API
+    - 'ollama': Uses Ollama local embedding models
+    """
+    p = (provider or os.getenv("EMBEDDING_PROVIDER") or EMBEDDING_PROVIDER).lower().strip()
+    m = model or os.getenv("EMBEDDING_MODEL") or EMBEDDING_MODEL
 
-    elif p in ("huggingface", "sentence-transformers"):
+    if p in ("huggingface", "sentence-transformers"):
         try:
             from langchain_community.embeddings import HuggingFaceEmbeddings
-            log.info("Embeddings provider=%s model=%s -> real HuggingFaceEmbeddings initialized", p, m)
-            return HuggingFaceEmbeddings(model_name=m)
+            log.info("Embeddings provider=%s model=%s -> initializing HuggingFaceEmbeddings", p, m)
+            return HuggingFaceEmbeddings(
+                model_name=m,
+                model_kwargs={"device": "cpu"},
+                encode_kwargs={"normalize_embeddings": True},
+            )
         except Exception as e:
-            log.warning("Embeddings provider=%s init FAILED (%s), falling back to local vectorizer", p, e)
+            log.error("Failed to load HuggingFace embedding model '%s': %s", m, e)
+            raise RuntimeError(
+                f"Không thể khởi tạo mô hình embedding '{m}' từ Hugging Face: {e}\n"
+                f"Vui lòng chạy script: 'python scripts/pull_models.py --embedding' "
+                f"để tải sẵn trọng số mô hình về máy."
+            ) from e
 
-    # Fallback to deterministic local vectorizer
-    log.warning("Embeddings -> FALLBACK hashing vectorizer in use (no real embedding model loaded)")
-    return FallbackDenseEmbeddings(dim=384)
+    elif p == "openai":
+        api_key = os.getenv("OPENAI_API_KEY", "")
+        if not api_key or api_key.startswith("sk-your_"):
+            raise ValueError(
+                "EMBEDDING_PROVIDER='openai' nhưng chưa cấu hình OPENAI_API_KEY hợp lệ trong file .env."
+            )
+        try:
+            from langchain_openai import OpenAIEmbeddings
+            log.info("Embeddings provider=openai model=%s -> initializing OpenAIEmbeddings", m)
+            return OpenAIEmbeddings(model=m, api_key=api_key)
+        except Exception as e:
+            log.error("Failed to load OpenAI embedding model '%s': %s", m, e)
+            raise RuntimeError(f"Lỗi khởi tạo OpenAIEmbeddings: {e}") from e
+
+    elif p == "ollama":
+        try:
+            import requests
+            resp = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=2)
+            if resp.status_code != 200:
+                raise RuntimeError(f"Ollama server trả về mã lỗi HTTP {resp.status_code}")
+            from langchain_ollama import OllamaEmbeddings
+            log.info("Embeddings provider=ollama model=%s base_url=%s -> real OllamaEmbeddings initialized", m, OLLAMA_BASE_URL)
+            return OllamaEmbeddings(model=m, base_url=OLLAMA_BASE_URL)
+        except Exception as e:
+            log.error("Ollama embedding service unreachable at %s (%s)", OLLAMA_BASE_URL, e)
+            raise RuntimeError(
+                f"Không thể kết nối tới dịch vụ Ollama tại {OLLAMA_BASE_URL} cho mô hình '{m}': {e}\n"
+                f"Vui lòng kiểm tra Ollama đang chạy (`ollama serve`) và đã pull model (`ollama pull {m}`)."
+            ) from e
+
+    else:
+        raise ValueError(
+            f"Unsupported EMBEDDING_PROVIDER='{p}'. Các provider được hỗ trợ: 'huggingface', 'sentence-transformers', 'openai', 'ollama'."
+        )

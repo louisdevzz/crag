@@ -1,4 +1,4 @@
-"""Central Type-Safe Configuration System for Legal CRAG Assistant V3.
+"""Central Type-Safe Configuration System for Legal CRAG Assistant.
 
 Inspired by Hermes Agent and OpenClaw schema-driven configuration principles.
 Uses Pydantic BaseModels for rigorous validation, environment overrides,

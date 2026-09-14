@@ -1,4 +1,4 @@
-# Sơ đồ và Luồng Hoạt động Toàn diện — Legal CRAG Assistant V3
+# Sơ đồ và Luồng Hoạt động Toàn diện — Legal CRAG Assistant
 
 > **Tài liệu thuyết minh quy trình điều phối tác tử tự hiệu chỉnh truy hồi Corrective RAG (CRAG) và Quản lý Bộ nhớ Phiên làm việc (Session Memory).**
 
@@ -15,7 +15,7 @@
 
 ## 1. Tổng quan Kiến trúc 3 Layer
 
-Hệ thống Legal CRAG Assistant V3 tuân thủ nghiêm ngặt nguyên lý phân định ranh giới trách nhiệm (*Separation of Concerns*) giữa 3 tầng chức năng:
+Hệ thống Legal CRAG Assistant tuân thủ nghiêm ngặt nguyên lý phân định ranh giới trách nhiệm (*Separation of Concerns*) giữa 3 tầng chức năng:
 - **Layer 1 — Interface & API:** Tiếp nhận yêu cầu từ người dùng qua CLI hoặc FastAPI Gateway (`/api/chat`).
 - **Layer 2 — Agent & Correction:** Đồ thị trạng thái **LangGraph** điều phối toàn bộ workflow thông minh.
 - **Layer 3 — Knowledge & Data:** SQLite (`app.db`), ChromaDB Vector Store, rank-bm25, và Cổng thông tin pháp luật chính thống.
@@ -26,7 +26,7 @@ Hệ thống Legal CRAG Assistant V3 tuân thủ nghiêm ngặt nguyên lý phâ
 
 Toàn bộ quy trình từ lúc tiếp nhận câu hỏi của người dùng, phân luồng điều hướng, truy hồi lai, đánh giá bằng chứng 3 nhánh CRAG, kiểm định trích dẫn đến khi trả về câu trả lời hoàn chỉnh được tích hợp thống nhất trên **một sơ đồ duy nhất**:
 
-![Sơ đồ Toàn diện Luồng Hoạt động Legal CRAG Assistant V3](images/workflow.png)
+![Sơ đồ Toàn diện Luồng Hoạt động Legal CRAG Assistant](images/workflow.png)
 
 ---
 

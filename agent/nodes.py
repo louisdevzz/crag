@@ -1,4 +1,4 @@
-"""LangGraph Node Implementations for Legal CRAG Assistant V3."""
+"""LangGraph Node Implementations for Legal CRAG Assistant."""
 from __future__ import annotations
 
 import json

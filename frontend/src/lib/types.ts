@@ -1,5 +1,5 @@
 /**
- * TypeScript Type Definitions for Legal CRAG Assistant V3 Frontend.
+ * TypeScript Type Definitions for Legal CRAG Assistant Frontend.
  */
 
 export interface ClaimItem {

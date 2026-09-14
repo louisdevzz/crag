@@ -1,4 +1,4 @@
-"""CLI Application and Demo Suite Runner for Legal CRAG Assistant V3 (Table 3.2)."""
+"""CLI Application and Demo Suite Runner for Legal CRAG Assistant (Table 3.2)."""
 from __future__ import annotations
 
 import argparse
@@ -18,7 +18,7 @@ def run_demo_suite():
     store = get_memory_store()
 
     print("=" * 80)
-    print("LEGAL CRAG ASSISTANT V3 — 5 MANDATORY DEMO TEST SCENARIOS (TABLE 3.2)")
+    print("LEGAL CRAG ASSISTANT — 5 MANDATORY DEMO TEST SCENARIOS (TABLE 3.2)")
     print("=" * 80)
 
     # -------------------------------------------------------------------------
@@ -119,7 +119,7 @@ def interactive_cli():
     session_id = store.create_session(client_id)
 
     print("=" * 80)
-    print("LEGAL CRAG ASSISTANT V3 — INTERACTIVE CLI")
+    print("LEGAL CRAG ASSISTANT — INTERACTIVE CLI")
     print("Gõ câu hỏi pháp lý bằng tiếng Việt (hoặc 'exit' để thoát, 'clear' để xóa memory)")
     print("=" * 80)
 
@@ -168,7 +168,7 @@ def interactive_cli():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Legal CRAG Assistant V3 CLI & Demo")
+    parser = argparse.ArgumentParser(description="Legal CRAG Assistant CLI & Demo")
     parser.add_argument("--demo", action="store_true", help="Run the 5 mandatory demo test scenarios (Table 3.2)")
     args = parser.parse_args()
 

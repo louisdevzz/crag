@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Legal CRAG Assistant V3 — Trợ lý Pháp lý & Tuân thủ",
+  title: "Legal CRAG Assistant — Trợ lý Pháp lý & Tuân thủ",
   description: "Trợ lý AI hỗ trợ tra cứu pháp luật doanh nghiệp Việt Nam với Corrective RAG (CRAG) và Session Memory",
 };
 

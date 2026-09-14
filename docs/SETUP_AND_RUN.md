@@ -1,4 +1,4 @@
-# Hướng dẫn Kỹ thuật: Cài đặt và Vận hành Hệ thống Legal CRAG Assistant V3
+# Hướng dẫn Kỹ thuật: Cài đặt và Vận hành Hệ thống Legal CRAG Assistant
 
 > **Tài liệu hướng dẫn triển khai toàn diện dự án Trợ lý Tuân thủ & Pháp lý Doanh nghiệp (Legal & Compliance AI Assistant) với Corrective RAG (CRAG) và Session Memory.**
 

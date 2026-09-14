@@ -1,4 +1,4 @@
-"""Comprehensive Evaluation Metrics for Legal CRAG Assistant V3 (Chapter 4)."""
+"""Comprehensive Evaluation Metrics for Legal CRAG Assistant (Chapter 4)."""
 from __future__ import annotations
 
 from typing import Any, Dict, List, Set

@@ -1,4 +1,4 @@
-"""FastAPI RESTful Gateway for Legal CRAG Assistant V3 (Layer 1)."""
+"""FastAPI RESTful Gateway for Legal CRAG Assistant (Layer 1)."""
 from __future__ import annotations
 
 import json as jsonlib
@@ -30,7 +30,7 @@ log = get_logger(__name__)
 
 
 app = FastAPI(
-    title="Legal CRAG Assistant V3 API Gateway",
+    title="Legal CRAG Assistant API Gateway",
     description="RESTful API for Vietnamese Corporate & Labor Law Corrective RAG Agent",
     version="3.0.0",
 )

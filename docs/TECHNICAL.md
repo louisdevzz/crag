@@ -1,4 +1,4 @@
-# Tài liệu Kỹ thuật Hệ thống — Legal CRAG Assistant V3 (Technical Documentation)
+# Tài liệu Kỹ thuật Hệ thống — Legal CRAG Assistant (Technical Documentation)
 
 > **Tài liệu đặc tả toàn diện về công nghệ, kiến trúc mã nguồn, giải thuật truy hồi lai, hệ thống tác tử LangGraph và cơ chế bảo vệ an toàn được triển khai trong dự án.**
 
@@ -22,7 +22,7 @@
 
 ## 1. Tôn chỉ Kỹ thuật & Các Bất biến Hệ thống
 
-Hệ thống Legal CRAG Assistant V3 được xây dựng nhằm giải quyết triệt để vấn đề **ảo giác (*hallucination*)** trong bài toán hỏi đáp văn bản quy phạm pháp luật. Mọi thành phần trong mã nguồn đều phải tuân thủ 4 bất biến (*System Invariants*):
+Hệ thống Legal CRAG Assistant được xây dựng nhằm giải quyết triệt để vấn đề **ảo giác (*hallucination*)** trong bài toán hỏi đáp văn bản quy phạm pháp luật. Mọi thành phần trong mã nguồn đều phải tuân thủ 4 bất biến (*System Invariants*):
 
 1. **Không Ảo giác Trích dẫn (Zero Hallucinated Citations):**  
    Mọi mệnh đề kết luận pháp lý sinh ra bắt buộc phải có `source_id` tương ứng tồn tại trong tập bằng chứng thực tế (*Evidence Map*). Bộ kiểm định trích dẫn xác định (*Deterministic Citation Validator*) chạy độc lập sau bước sinh để phát hiện và chặn đứng mọi vi phạm.
@@ -129,8 +129,10 @@ Do danh mục model miễn phí của Groq thay đổi liên tục (một số m
   3. Nếu không có model Qwen nào khả dụng $\to$ tìm kiếm mờ theo `preferred_family`, cuối cùng fallback về phần tử đầu của danh mục.
 - **Kiến trúc Local + Cloud song song:** Đề xuất vận hành đối xứng — Ollama cục bộ chạy `qwen3.8:latest` (offline, bảo mật dữ liệu) khi GPU rảnh, tự động chuyển sang Groq `qwen/qwen3.8-27b` (cloud, miễn phí) khi cần fallback hoặc GPU đang bận tác vụ khác.
 
-### 4.4. Bộ Nhúng Dự phòng Offline (`FallbackDenseEmbeddings`)
-Khi không có Ollama hoặc HuggingFace embeddings khả dụng, `llm.py::get_embeddings()` tự động fallback sang `FallbackDenseEmbeddings`: vector 384 chiều xác định (*deterministic*) dựa trên băm token và character trigram, chuẩn hóa L2, đảm bảo pipeline truy hồi vẫn hoạt động đầy đủ trong môi trường hoàn toàn cách ly mạng.
+### 4.4. Quản lý Mô hình Nhúng Thực tế & Bộ Tải Trọng số (scripts/pull_models.py)
+Hệ thống loại bỏ hoàn toàn cơ chế nhúng giả lập (*dummy hash fallback*) để đảm bảo 100% độ chính xác của không gian vector ngữ nghĩa. Mọi tác vụ truy hồi bắt buộc phải sử dụng mô hình embedding thực tế (mặc định: BAAI/bge-m3 đa ngôn ngữ chất lượng cao).
+- **Script tải mô hình:** python scripts/pull_models.py hỗ trợ kéo sẵn trọng số mô hình từ Hugging Face Hub (hoặc Ollama), tự động tối ưu hóa dung lượng (bỏ qua định dạng dư thừa như ONNX/Flax) và chạy kiểm định vector (dimension, forward pass) trước khi đưa vào vận hành.
+- **Xử lý lỗi nghiêm ngặt:** Nếu mô hình chưa được tải hoặc dịch vụ embedding không khả dụng, hệ thống sẽ báo lỗi rõ ràng kèm hướng dẫn chạy script tải thay vì âm thầm sử dụng vector giả.
 
 ---
 

@@ -1,4 +1,4 @@
-"""Ingestion Pipeline for Legal CRAG Assistant V3.
+"""Ingestion Pipeline for Legal CRAG Assistant.
 
 Populates:
 1. SQLite Database (`app.db`): `legal_documents`, `provisions`, `provision_versions`.
@@ -258,7 +258,7 @@ def ingest_corpus(
     chroma_dir = Path(chroma_dir)
 
     print("=" * 70)
-    print("LEGAL CRAG ASSISTANT V3 — INGESTION PIPELINE")
+    print("LEGAL CRAG ASSISTANT — INGESTION PIPELINE")
     print("=" * 70)
 
     # 1. Initialize SQLite Database

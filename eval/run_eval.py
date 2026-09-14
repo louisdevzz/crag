@@ -1,4 +1,4 @@
-"""Automated Benchmark and Calibration Runner for Legal CRAG Assistant V3."""
+"""Automated Benchmark and Calibration Runner for Legal CRAG Assistant."""
 from __future__ import annotations
 
 import json

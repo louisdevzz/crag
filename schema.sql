@@ -1,4 +1,4 @@
--- schema.sql: Legal CRAG Assistant V3 Database Schema
+-- schema.sql: Legal CRAG Assistant Database Schema
 -- Combines Legal Knowledge Base (Ch 3) and Session & Client Memory (Ch 5)
 
 PRAGMA foreign_keys = ON;

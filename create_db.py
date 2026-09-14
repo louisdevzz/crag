@@ -1,4 +1,4 @@
-"""Database Initialization Script for Legal CRAG Assistant V3."""
+"""Database Initialization Script for Legal CRAG Assistant."""
 from __future__ import annotations
 
 import sqlite3

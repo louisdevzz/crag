@@ -1,4 +1,4 @@
-"""AgentState Definition for Legal CRAG Assistant V3."""
+"""AgentState Definition for Legal CRAG Assistant."""
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, TypedDict
