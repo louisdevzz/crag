@@ -25,6 +25,7 @@ from legal.preprocessor import UniversalLegalPreprocessor
 from logging_config import get_logger
 from memory.extractor import extract_and_save_memories
 from memory.store import get_memory_store
+from monitoring import trace_config
 
 log = get_logger(__name__)
 
@@ -32,7 +33,7 @@ log = get_logger(__name__)
 app = FastAPI(
     title="Legal CRAG Assistant API Gateway",
     description="RESTful API for Vietnamese Corporate & Labor Law Corrective RAG Agent",
-    version="3.0.0",
+    version="1.0.0",
 )
 
 # Enable CORS for Next.js frontend
@@ -116,7 +117,7 @@ def chat_endpoint(req: ChatRequest) -> ChatResponse:
         "memory_context": memory_context,
     }
 
-    config = {"configurable": {"thread_id": session_id}}
+    config = trace_config(thread_id=session_id, client_id=client_id)
     try:
         res = graph_app.invoke(state_input, config=config)
     except Exception as e:
@@ -202,7 +203,7 @@ async def chat_stream_endpoint(req: ChatRequest) -> StreamingResponse:
         "as_of_date": req.as_of_date,
         "memory_context": memory_context,
     }
-    config = {"configurable": {"thread_id": session_id}}
+    config = trace_config(thread_id=session_id, client_id=client_id)
 
     async def event_stream() -> AsyncIterator[str]:
         final_state: Dict[str, Any] = dict(state_input)

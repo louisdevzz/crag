@@ -95,6 +95,72 @@ def rebuild_bm25_index(db_path: Path | str = DB_PATH) -> int:
     return len(all_provisions)
 
 
+def rebuild_chroma_index(
+    db_path: Path | str = DB_PATH,
+    chroma_dir: Path | str = CHROMA_DIR,
+    batch_size: int = 64,
+) -> int:
+    """Rebuild the Chroma dense vector index from the current `provisions` table.
+
+    A collection's embedding dimension is fixed at creation time, so changing
+    `EMBEDDING_MODEL` (e.g. a 384-dim model -> BAAI/bge-m3 at 1024-dim) leaves
+    the persisted collection stale: queries then raise `InvalidArgumentError`
+    ("expecting embedding with dimension of 384, got 1024"). SQLite is the
+    single source of truth for provisions (see `rebuild_bm25_index`), so this
+    drops and recreates the collection and re-embeds every provision from
+    there — no raw source documents required.
+    """
+    db_path = Path(db_path)
+    with sqlite3.connect(db_path) as con:
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT p.id AS evidence_id, p.document_id, p.chapter, p.article, p.clause,
+                   p.heading, p.text, d.document_number, d.title AS document_title
+            FROM provisions p
+            JOIN legal_documents d ON d.id = p.document_id
+            """
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+
+    vectorstore = get_vectorstore(chroma_dir)
+    try:
+        vectorstore.delete_collection()
+    except Exception:
+        pass
+    vectorstore = get_vectorstore(chroma_dir)  # recreate empty, bound to the current embedding function
+
+    if not rows:
+        return 0
+
+    texts = [r["text"] for r in rows]
+    ids = [r["evidence_id"] for r in rows]
+    metadatas = [
+        {
+            "evidence_id": r["evidence_id"],
+            "locator": r["evidence_id"],
+            "document_id": r["document_id"],
+            "document_number": r["document_number"],
+            "document_title": r["document_title"],
+            "chapter": r.get("chapter") or "",
+            "article": r.get("article") or "",
+            "clause": r.get("clause") or "",
+            "heading": r.get("heading") or "",
+        }
+        for r in rows
+    ]
+
+    for i in range(0, len(texts), batch_size):
+        vectorstore.add_texts(
+            texts=texts[i : i + batch_size],
+            metadatas=metadatas[i : i + batch_size],
+            ids=ids[i : i + batch_size],
+        )
+
+    return len(rows)
+
+
 def add_document_to_indexes(
     result: Dict[str, Any],
     db_path: Path | str = DB_PATH,

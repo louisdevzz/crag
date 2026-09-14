@@ -15,6 +15,7 @@ from eval.metrics import (
     compute_citation_metrics,
     compute_fallback_metrics,
     compute_mrr,
+    compute_ragas_metrics,
     compute_recall_at_k,
     compute_temporal_correctness,
 )
@@ -145,6 +146,8 @@ def run_test_benchmark(
             "as_of_date": as_of_date,
             "recall@5": recall,
             "mrr": mrr,
+            "contexts": [e.get("text", "") for e in evidence if e.get("text")],
+            "ground_truth": s.get("ground_truth"),
         }
         eval_records.append(record)
         print(f"[{idx:02d}/{len(test_samples)}] Type: {q_type:<10} | Action: {pred_act:<10} | Citations OK: {str(report.get('ok')):<5} | Q: {q[:45]}...")
@@ -154,6 +157,8 @@ def run_test_benchmark(
     fallback_metrics = compute_fallback_metrics(eval_records)
     citation_metrics = compute_citation_metrics(eval_records)
     temporal_correctness = compute_temporal_correctness(eval_records)
+    print("\nComputing RAGAS metrics (Faithfulness, Answer Relevancy, Context Precision/Recall)...")
+    ragas_metrics = compute_ragas_metrics(eval_records)
     avg_recall = sum(retrieval_recalls) / len(retrieval_recalls) if retrieval_recalls else 1.0
     avg_mrr = sum(retrieval_mrrs) / len(retrieval_mrrs) if retrieval_mrrs else 1.0
 
@@ -172,6 +177,11 @@ def run_test_benchmark(
     print(f"   - Citation Accuracy:        {citation_metrics['citation_accuracy']:.4f}")
     print(f"   - Citation Coverage:        {citation_metrics['citation_coverage']:.4f}")
     print(f"   - Legal Temporal Correct:   {temporal_correctness:.4f}")
+    print(f"4. RAGAS Metrics (n={ragas_metrics['sample_count']}):")
+    print(f"   - Faithfulness:             {ragas_metrics['faithfulness']:.4f}")
+    print(f"   - Answer Relevancy:         {ragas_metrics['answer_relevancy']:.4f}")
+    print(f"   - Context Precision:        {ragas_metrics['context_precision']:.4f}")
+    print(f"   - Context Recall:           {ragas_metrics['context_recall']:.4f}")
     print("=" * 80)
 
     # Save benchmark report
@@ -185,6 +195,11 @@ def run_test_benchmark(
         "citation_accuracy": citation_metrics["citation_accuracy"],
         "citation_coverage": citation_metrics["citation_coverage"],
         "legal_temporal_correctness": temporal_correctness,
+        "ragas_faithfulness": ragas_metrics["faithfulness"],
+        "ragas_answer_relevancy": ragas_metrics["answer_relevancy"],
+        "ragas_context_precision": ragas_metrics["context_precision"],
+        "ragas_context_recall": ragas_metrics["context_recall"],
+        "ragas_sample_count": ragas_metrics["sample_count"],
         "sample_count": len(test_samples),
     }
 

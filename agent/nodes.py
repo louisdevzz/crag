@@ -210,11 +210,68 @@ def merge_evidence_node(state: AgentState) -> Dict[str, Any]:
     return {"evidence": merged}
 
 
+def _generate_general_response(query: str, memory_context: str) -> Dict[str, Any]:
+    """Answer a plain greeting/chit-chat turn (route == "general") naturally.
+
+    Deliberately bypasses the evidence-grounding contract used for legal
+    content: a greeting has no [source_id] to cite and must never trigger
+    the "Chưa đủ căn cứ pháp lý để kết luận." abstain disclaimer, which is
+    reserved for legal questions the retrieval pipeline actually failed to
+    ground.
+    """
+    llm = get_chat_model()
+    writer = get_stream_writer()
+
+    if llm is None:
+        log.warning("[GENERATE general] no LLM client -> deterministic greeting fallback")
+        return {
+            "answer": "Xin chào! Tôi là trợ lý AI hỗ trợ tra cứu tuân thủ pháp lý doanh nghiệp. Bạn cần tôi tra cứu quy định gì?",
+            "claims": [],
+            "abstain": False,
+        }
+
+    prompt = f"""BẠN LÀ TRỢ LÝ AI HỖ TRỢ TRA CỨU TUÂN THỦ PHÁP LÝ DOANH NGHIỆP.
+Người dùng vừa gửi một lời chào/hỏi thăm thông thường, KHÔNG phải câu hỏi pháp lý.
+Hãy trả lời tự nhiên, thân thiện, ngắn gọn bằng tiếng Việt; nếu phù hợp, tự giới thiệu
+bạn là trợ lý AI hỗ trợ tra cứu pháp luật doanh nghiệp. KHÔNG dùng cụm từ
+"Chưa đủ căn cứ pháp lý để kết luận" — câu đó chỉ dành cho câu hỏi pháp lý thiếu bằng chứng.
+
+BỐI CẢNH KHÁCH HÀNG (chỉ để hiểu ngữ cảnh, không phải căn cứ pháp lý):
+{memory_context if memory_context else "Không có"}
+
+Định dạng đầu ra bắt buộc đúng JSON:
+{{"answer": "Nội dung trả lời...", "claims": [], "abstain": false}}
+
+LỜI CHÀO CỦA NGƯỜI DÙNG:
+{query}
+"""
+    try:
+        raw_text = ""
+        for chunk in llm.stream(prompt):
+            raw_text += chunk.content
+            if chunk.content:
+                writer({"raw_chunk": chunk.content})
+        json_m = re.search(r"\{[\s\S]*\}", raw_text)
+        generation = json.loads(json_m.group(0)) if json_m else {"answer": raw_text, "claims": [], "abstain": False}
+        log.info("[GENERATE general] answer_chars=%d", len(generation.get("answer", "")))
+        return generation
+    except Exception as e:
+        log.error("[GENERATE general] LLM call FAILED (%s) -> deterministic greeting fallback", e)
+        return {
+            "answer": "Xin chào! Tôi là trợ lý AI hỗ trợ tra cứu tuân thủ pháp lý doanh nghiệp. Bạn cần tôi tra cứu quy định gì?",
+            "claims": [],
+            "abstain": False,
+        }
+
+
 def generate_answer(state: AgentState) -> Dict[str, Any]:
     """Generate structured response strictly constrained to evidence with citations."""
     query = state.get("query", "")
     evidence = state.get("evidence", [])
     memory_context = state.get("memory_context", "")
+
+    if state.get("route") == "general":
+        return {"generation": _generate_general_response(query, memory_context)}
 
     # Format Evidence context
     context_lines = []

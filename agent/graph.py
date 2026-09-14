@@ -5,6 +5,8 @@ from typing import Any
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
+
+from monitoring import trace_config
 from agent.nodes import (
     evaluate_retrieval,
     generate_answer,
@@ -139,7 +141,7 @@ def invoke_crag(
     app = app or get_crag_app()
     cid = client_id or "default_client"
     sid = session_id or f"thread_{uuid.uuid4().hex[:8]}"
-    config = {"configurable": {"thread_id": sid}}
+    config = trace_config(thread_id=sid, client_id=cid)
     state_input = {
         "client_id": cid,
         "session_id": sid,
