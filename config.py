@@ -81,20 +81,39 @@ class SecurityConfig(BaseModel):
     )
 
 
+def _resolve_crag_home() -> Path:
+    raw = os.getenv("CRAG_HOME", "~/.crag")
+    return Path(raw).expanduser().resolve()
+
+
+def _resolve_db_path(crag_home: Path) -> Path:
+    raw = os.getenv("DB_PATH") or os.getenv("CRAG_DB_PATH")
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return (crag_home / "app.db").resolve()
+
+
+def _resolve_chroma_dir(crag_home: Path) -> Path:
+    raw = os.getenv("CHROMA_DIR")
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return (crag_home / "chroma").resolve()
+
+
 class PathConfig(BaseModel):
     """Directory Layout and File Paths."""
     base_dir: Path = Field(default_factory=lambda: Path(__file__).resolve().parent)
-    data_dir: Path = Field(default_factory=lambda: Path(__file__).resolve().parent / "data")
-    raw_data_dir: Path = Field(default_factory=lambda: Path(__file__).resolve().parent / "data" / "raw")
-    processed_data_dir: Path = Field(default_factory=lambda: Path(__file__).resolve().parent / "data" / "processed")
-    corpus_manifest_path: Path = Field(default_factory=lambda: Path(__file__).resolve().parent / "data" / "corpus_manifest.json")
-    db_path: Path = Field(default_factory=lambda: Path(__file__).resolve().parent / "app.db")
-    chroma_dir: Path = Field(default_factory=lambda: Path(__file__).resolve().parent / "chroma")
-    chroma_collection: str = "legal_corpus_v1"
+    crag_home: Path = Field(default_factory=_resolve_crag_home)
+    data_dir: Path = Field(default_factory=lambda: Path(os.getenv("DATA_DIR", str(Path(__file__).resolve().parent / "data"))).expanduser().resolve())
+    raw_data_dir: Path = Field(default_factory=lambda: Path(os.getenv("RAW_DATA_DIR", str(Path(__file__).resolve().parent / "data" / "raw"))).expanduser().resolve())
+    processed_data_dir: Path = Field(default_factory=lambda: Path(os.getenv("PROCESSED_DATA_DIR", str(Path(__file__).resolve().parent / "data" / "processed"))).expanduser().resolve())
+    corpus_manifest_path: Path = Field(default_factory=lambda: Path(os.getenv("CORPUS_MANIFEST_PATH", str(Path(__file__).resolve().parent / "data" / "corpus_manifest.json"))).expanduser().resolve())
+    db_path: Path = Field(default_factory=lambda: _resolve_db_path(_resolve_crag_home()))
+    chroma_dir: Path = Field(default_factory=lambda: _resolve_chroma_dir(_resolve_crag_home()))
+    chroma_collection: str = Field(default_factory=lambda: os.getenv("CHROMA_COLLECTION", "legal_corpus_v1"))
     eval_dir: Path = Field(default_factory=lambda: Path(__file__).resolve().parent / "eval")
     calibration_set_path: Path = Field(default_factory=lambda: Path(__file__).resolve().parent / "eval" / "calibration_set.json")
     test_set_path: Path = Field(default_factory=lambda: Path(__file__).resolve().parent / "eval" / "test_set.json")
-
 
 class AppConfig(BaseModel):
     """Unified Application Configuration Singleton."""
@@ -132,6 +151,7 @@ OFFICIAL_DOMAINS = CONFIG.security.official_domains
 ALLOWED_MEMORY_KEYS = CONFIG.security.allowed_memory_keys
 
 BASE_DIR = CONFIG.paths.base_dir
+CRAG_HOME = CONFIG.paths.crag_home
 DATA_DIR = CONFIG.paths.data_dir
 RAW_DATA_DIR = CONFIG.paths.raw_data_dir
 PROCESSED_DATA_DIR = CONFIG.paths.processed_data_dir

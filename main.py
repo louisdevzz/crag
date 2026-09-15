@@ -170,13 +170,30 @@ def interactive_cli():
 def main():
     parser = argparse.ArgumentParser(description="Legal CRAG Assistant CLI & Demo")
     parser.add_argument("--demo", action="store_true", help="Run the 5 mandatory demo test scenarios (Table 3.2)")
+    parser.add_argument(
+        "--init",
+        action="store_true",
+        help="Initialize system directories, SQLite database (~/.crag/), and run pre-flight diagnostics",
+    )
+    parser.add_argument(
+        "--check-models",
+        action="store_true",
+        help="When used with --init, also download and verify embedding and reranker model weights",
+    )
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="When used with --init, wipe and cleanly reinitialize the SQLite database",
+    )
     args = parser.parse_args()
 
-    if args.demo:
+    if args.init:
+        from scripts.init_system import init_system
+        init_system(check_models=args.check_models, reset=args.reset)
+    elif args.demo:
         run_demo_suite()
     else:
         interactive_cli()
-
 
 if __name__ == "__main__":
     main()

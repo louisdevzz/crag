@@ -46,8 +46,8 @@ Hệ thống áp dụng kiến trúc 3 tầng tách biệt (*Separation of Conce
   - LangGraph điều phối đồ thị trạng thái `StateGraph(AgentState)`.
   - Router phân luồng, Retrieval Evaluator chấm điểm, 3 nhánh xử lý CRAG, Generator và Citation Validator.
 - **Layer 3 — Knowledge & Data:**  
-  - SQLite (`app.db`) quản lý metadata văn bản, quan hệ sửa đổi/thay thế, session logs và client memories.
-  - ChromaDB lưu trữ Dense Vector Index.
+  - SQLite (`~/.crag/app.db`) quản lý metadata văn bản, quan hệ sửa đổi/thay thế, session logs và client memories (tách rời hoàn toàn khỏi repo mã nguồn).
+  - ChromaDB (`~/.crag/chroma`) lưu trữ Dense Vector Index.
   - rank-bm25 lưu trữ Lexical Index.
   - Controlled Web Search với danh mục tên miền công quyền cho phép (`vbpl.vn`, `chinhphu.vn`...).
 

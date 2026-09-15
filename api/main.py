@@ -1,6 +1,7 @@
 """FastAPI RESTful Gateway for Legal CRAG Assistant (Layer 1)."""
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 import json as jsonlib
 import os
 import pickle
@@ -13,7 +14,6 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-
 # Ensure project root is in sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -30,12 +30,24 @@ from monitoring import trace_config
 log = get_logger(__name__)
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan handler: ensure system directories and database exist."""
+    try:
+        from scripts.init_system import init_system
+        init_system(quiet=True)
+        log.info("System initialized successfully on startup (DB at %s)", DB_PATH)
+    except Exception as e:
+        log.warning("Auto-initialization on startup encountered warning: %s", e)
+    yield
+
+
 app = FastAPI(
     title="Legal CRAG Assistant API Gateway",
     description="RESTful API for Vietnamese Corporate & Labor Law Corrective RAG Agent",
     version="1.0.0",
+    lifespan=lifespan,
 )
-
 # Enable CORS for Next.js frontend
 app.add_middleware(
     CORSMiddleware,

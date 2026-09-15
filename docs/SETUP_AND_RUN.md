@@ -119,8 +119,24 @@ Module `legal/preprocessor.py` chịu trách nhiệm chuẩn hóa mọi tài li�
    Tạo sẵn các **Legal Strips** có gán nhãn `locator` xác định (ví dụ: `DOC_41_2024_QH15_D2_K1`).
 
 ---
+## 5. Khởi tạo Hệ thống & Cấu trúc Dữ liệu (~/.crag/)
 
-## 5. Pipeline Nạp Dữ liệu (Ingestion Pipeline)
+Hệ thống áp dụng chuẩn lưu trữ an toàn, tách biệt hoàn toàn database khỏi mã nguồn repo và quản lý tập trung tại `~/.crag/` (hoặc biến môi trường `$CRAG_HOME`):
+
+```bash
+python init_system.py
+# Hoặc tích hợp qua CLI:
+python main.py --init
+```
+
+Lệnh trên thực hiện tự động:
+1. Thiết lập cây thư mục: `~/.crag/database/`, `~/.crag/chroma/`, `~/.crag/logs/`.
+2. Khởi tạo 8 bảng quan hệ và chỉ mục tại `~/.crag/app.db` kích hoạt chế độ WAL mode.
+3. Tự động kiểm tra tính hợp lệ của file `.env` và các API keys.
+
+---
+
+## 6. Pipeline Nạp Dữ liệu (Ingestion Pipeline)
 
 Chạy lệnh nạp toàn bộ dữ liệu từ `data/` vào cơ sở dữ liệu SQLite và các hệ thống chỉ mục:
 
@@ -129,14 +145,13 @@ python ingest.py
 ```
 
 ### Quá trình thực thi bao gồm 4 bước:
-1. **Khởi tạo Database SQLite (`app.db`):** Tạo 8 bảng quan hệ và các index tìm kiếm nhanh.
+1. **Khởi tạo/Cập nhật Database SQLite (`~/.crag/app.db`):** Đảm bảo 8 bảng quan hệ và các index tìm kiếm nhanh sẵn sàng.
 2. **Nạp văn bản vào SQLite:** Đưa toàn bộ metadata văn bản (`legal_documents`) và các điều khoản (`provisions`).
 3. **Xây dựng chỉ mục từ khóa BM25:** Tokenize tiếng Việt và lưu file `data/processed/bm25_index.pkl`.
-4. **Xây dựng chỉ mục Dense Vector ChromaDB:** Sử dụng vectorizer chuẩn hóa L2 384 chiều (hoặc BGE-M3 khi có Ollama) nạp vào collection `legal_corpus_v1` tại `./chroma`.
-
+4. **Xây dựng chỉ mục Dense Vector ChromaDB:** Sử dụng vectorizer chuẩn hóa L2 384 chiều (hoặc BGE-M3 khi có Ollama) nạp vào collection `legal_corpus_v1` tại `~/.crag/chroma`.
 ---
 
-## 6. Chạy 5 Kịch bản Demo Kiểm chuẩn Bắt buộc
+## 7. Chạy 5 Kịch bản Demo Kiểm chuẩn Bắt buộc
 
 Để nghiệm thu đồ án theo đúng chuẩn mực của **Table 3.2** trong tài liệu hướng dẫn, chạy lệnh sau:
 
@@ -168,7 +183,7 @@ python main.py --demo
 
 ---
 
-## 7. Chạy Giao diện Dòng lệnh Tương tác (CLI Mode)
+## 8. Chạy Giao diện Dòng lệnh Tương tác (CLI Mode)
 
 Khởi động phiên chat tương tác bằng lệnh:
 
@@ -187,7 +202,7 @@ python main.py
 
 ---
 
-## 8. Chạy Bộ Đánh giá Benchmark & Quét lưới Ngưỡng
+## 9. Chạy Bộ Đánh giá Benchmark & Quét lưới Ngưỡng
 
 Để đo lường định lượng và tái lập các bảng số liệu trong **Chương 4**, chạy script:
 
@@ -210,7 +225,7 @@ python eval/run_eval.py
 
 ---
 
-## 9. Khởi chạy FastAPI Backend & Giao diện Next.js Web UI (Layer 1)
+## 10. Khởi chạy FastAPI Backend & Giao diện Next.js Web UI (Layer 1)
 
 Hệ thống cung cấp giao diện Web người dùng bằng **Next.js (TypeScript)** theo đúng đặc tả của đồ án:
 

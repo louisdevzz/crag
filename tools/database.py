@@ -5,6 +5,7 @@ Provides Pydantic-validated arguments and structured relation exploration.
 """
 from __future__ import annotations
 
+from pathlib import Path
 import re
 import sqlite3
 from typing import Any, Dict, List, Optional
@@ -17,10 +18,16 @@ from tools.base import BaseLegalTool
 
 
 def get_connection(db_path: str = str(DB_PATH)) -> sqlite3.Connection:
-    con = sqlite3.connect(db_path)
+    path = Path(db_path)
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        from create_db import init_db
+        init_db(path, quiet=True)
+    con = sqlite3.connect(str(path))
     con.row_factory = sqlite3.Row
+    con.execute("PRAGMA foreign_keys = ON")
+    con.execute("PRAGMA journal_mode = WAL")
     return con
-
 
 class DatabaseQueryInput(BaseModel):
     """Schema for legal database metadata query arguments."""

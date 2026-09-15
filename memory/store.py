@@ -11,11 +11,16 @@ from config import ALLOWED_MEMORY_KEYS, DB_PATH
 
 
 def get_connection(db_path: Path | str = DB_PATH) -> sqlite3.Connection:
-    con = sqlite3.connect(str(db_path))
+    path = Path(db_path)
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        from create_db import init_db
+        init_db(path, quiet=True)
+    con = sqlite3.connect(str(path))
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
+    con.execute("PRAGMA journal_mode = WAL")
     return con
-
 
 class MemoryStore:
     """Manages Client Profiles, Session Tracking, Episodic Query Logs, and Semantic Memory."""

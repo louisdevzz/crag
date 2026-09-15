@@ -11,7 +11,7 @@ Hệ thống được thiết kế theo **Kiến trúc 3 Layer Tách biệt**:
 
 - **Layer 1 — Interface & API:** Giao diện dòng lệnh chuyên nghiệp (CLI) và hạ tầng RESTful API (FastAPI) hỗ trợ trả lời, bảng trích dẫn citation xác định, quản lý phiên và hồ sơ client.
 - **Layer 2 — Agent & Correction:** Đồ thị trạng thái **LangGraph** điều phối toàn bộ workflow: Router phân luồng, Retrieval Evaluator chấm điểm relevance chuẩn hóa Sigmoid, 3 nhánh xử lý CRAG cốt lõi, Generator và Citation Validator.
-- **Layer 3 — Knowledge & Data:** SQLite (`app.db`) quản lý metadata văn bản và memory; ChromaDB quản lý Dense Vector Index; rank-bm25 quản lý Lexical Index; Reranker tính relevance; Controlled Web Search lọc tên miền công quyền chính thống.
+- **Layer 3 — Knowledge & Data:** SQLite (`~/.crag/app.db`) quản lý metadata văn bản và memory; ChromaDB (`~/.crag/chroma`) quản lý Dense Vector Index; rank-bm25 quản lý Lexical Index; Reranker tính relevance; Controlled Web Search lọc tên miền công quyền chính thống. Toàn bộ cơ sở dữ liệu và dữ liệu runtime được lưu trữ an toàn tại `~/.crag/` thay vì đặt trong repository.
 ![Sơ đồ Toàn diện Luồng Hoạt động Legal CRAG Assistant](docs/images/workflow.png)
 
 Hệ thống tuân thủ toàn diện các nguyên lý chuẩn của **[LangGraph Overview](https://docs.langchain.com/oss/python/langgraph/overview)**:
@@ -79,9 +79,10 @@ ai-agent-crag/
 ├── config.py                            # Cấu hình trung tâm
 ├── llm.py                               # LLM Factory đa Provider (Groq, OpenAI, OpenRouter, Ollama)
 ├── schema.sql                           # Schema 8 bảng SQLite
-├── create_db.py                         # Khởi tạo database app.db
+├── init_system.py                       # Khởi tạo toàn diện hệ thống (~/.crag/, SQLite, Chroma, chẩn đoán)
+├── create_db.py                         # Khởi tạo database SQLite tại ~/.crag/app.db
 ├── ingest.py                            # Pipeline nạp dữ liệu vào SQLite, BM25, Chroma
-├── main.py                              # CLI tương tác & Demo 5 kịch bản bắt buộc
+├── main.py                              # CLI tương tác & Demo 5 kịch bản bắt buộc (--init, --demo)
 └── docs/
     └── SETUP_AND_RUN.md                 # Hướng dẫn chi tiết cài đặt và vận hành
 ```
@@ -110,33 +111,41 @@ cp .env.example .env
 ```
 *(Nếu muốn dùng LLM bên ngoài như Groq, OpenAI hoặc OpenRouter, hãy điền API key tương ứng vào `.env`)*
 
-### Bước 3: Tải và Kiểm định Mô hình Thực tế (Embedding & Reranker)
+### Bước 3: Khởi tạo Hệ thống & Cơ sở Dữ liệu (~/.crag/)
+Khởi tạo thư mục làm việc `~/.crag/`, cấu trúc 8 bảng SQLite `~/.crag/app.db`, và kiểm tra toàn diện môi trường:
+```bash
+python init_system.py
+# hoặc: python main.py --init
+```
+*(Lưu ý: Hệ thống tách biệt hoàn toàn database khỏi repo mã nguồn, lưu trữ tập trung tại `~/.crag/` với chế độ WAL cho hiệu năng truy vấn tối ưu).*
+
+### Bước 4: Tải và Kiểm định Mô hình Thực tế (Embedding & Reranker)
 Tải trọng số mô hình từ Hugging Face Hub về bộ đệm cục bộ và kiểm định vector:
 ```bash
 python scripts/pull_models.py
 ```
 
-### Bước 4: Nạp dữ liệu vào Cơ sở Dữ liệu & Vector Store
+### Bước 5: Nạp dữ liệu vào Cơ sở Dữ liệu & Vector Store
 ```bash
 python ingest.py
 ```
 
-### Bước 5: Chạy 5 Kịch bản Demo Kiểm chuẩn (Table 3.2)
+### Bước 6: Chạy 5 Kịch bản Demo Kiểm chuẩn (Table 3.2)
 ```bash
 python main.py --demo
 ```
 
-### Bước 6: Chạy Trợ lý Tương tác qua Dòng lệnh (CLI Chat)
+### Bước 7: Chạy Trợ lý Tương tác qua Dòng lệnh (CLI Chat)
 ```bash
 python main.py
 ```
 
-### Bước 7: Chạy Bộ Đánh giá Benchmark Tự động (Chapter 4)
+### Bước 8: Chạy Bộ Đánh giá Benchmark Tự động (Chapter 4)
 ```bash
 python eval/run_eval.py
 ```
 
-### Bước 8: Khởi chạy FastAPI Backend Server & Web UI
+### Bước 9: Khởi chạy FastAPI Backend Server & Web UI
 ```bash
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
