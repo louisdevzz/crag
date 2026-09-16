@@ -113,21 +113,56 @@ def _resolve_chroma_dir(crag_home: Path) -> Path:
     return (crag_home / "chroma").resolve()
 
 
+def _resolve_data_dir(crag_home: Path) -> Path:
+    raw = os.getenv("DATA_DIR")
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return (crag_home / "data").resolve()
+
+
+def _resolve_raw_data_dir(crag_home: Path) -> Path:
+    raw = os.getenv("RAW_DATA_DIR")
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return (crag_home / "data" / "raw").resolve()
+
+
+def _resolve_processed_data_dir(crag_home: Path) -> Path:
+    raw = os.getenv("PROCESSED_DATA_DIR")
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return (crag_home / "data" / "processed").resolve()
+
+
+def _resolve_corpus_manifest_path(crag_home: Path) -> Path:
+    raw = os.getenv("CORPUS_MANIFEST_PATH")
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return (crag_home / "data" / "corpus_manifest.json").resolve()
+
+
+def _resolve_upload_dir(crag_home: Path) -> Path:
+    raw = os.getenv("UPLOAD_DIR")
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return (crag_home / "data" / "uploads").resolve()
+
+
 class PathConfig(BaseModel):
     """Directory Layout and File Paths."""
     base_dir: Path = Field(default_factory=lambda: Path(__file__).resolve().parent)
     crag_home: Path = Field(default_factory=_resolve_crag_home)
-    data_dir: Path = Field(default_factory=lambda: Path(os.getenv("DATA_DIR", str(Path(__file__).resolve().parent / "data"))).expanduser().resolve())
-    raw_data_dir: Path = Field(default_factory=lambda: Path(os.getenv("RAW_DATA_DIR", str(Path(__file__).resolve().parent / "data" / "raw"))).expanduser().resolve())
-    processed_data_dir: Path = Field(default_factory=lambda: Path(os.getenv("PROCESSED_DATA_DIR", str(Path(__file__).resolve().parent / "data" / "processed"))).expanduser().resolve())
-    corpus_manifest_path: Path = Field(default_factory=lambda: Path(os.getenv("CORPUS_MANIFEST_PATH", str(Path(__file__).resolve().parent / "data" / "corpus_manifest.json"))).expanduser().resolve())
+    data_dir: Path = Field(default_factory=lambda: _resolve_data_dir(_resolve_crag_home()))
+    raw_data_dir: Path = Field(default_factory=lambda: _resolve_raw_data_dir(_resolve_crag_home()))
+    processed_data_dir: Path = Field(default_factory=lambda: _resolve_processed_data_dir(_resolve_crag_home()))
+    corpus_manifest_path: Path = Field(default_factory=lambda: _resolve_corpus_manifest_path(_resolve_crag_home()))
     db_path: Path = Field(default_factory=lambda: _resolve_db_path(_resolve_crag_home()))
     chroma_dir: Path = Field(default_factory=lambda: _resolve_chroma_dir(_resolve_crag_home()))
     chroma_collection: str = Field(default_factory=lambda: os.getenv("CHROMA_COLLECTION", "legal_corpus_v1"))
     eval_dir: Path = Field(default_factory=lambda: Path(__file__).resolve().parent / "eval")
     calibration_set_path: Path = Field(default_factory=lambda: Path(__file__).resolve().parent / "eval" / "calibration_set.json")
     test_set_path: Path = Field(default_factory=lambda: Path(__file__).resolve().parent / "eval" / "test_set.json")
-    upload_dir: Path = Field(default_factory=lambda: Path(os.getenv("UPLOAD_DIR", str(Path(__file__).resolve().parent / "data" / "uploads"))).expanduser().resolve())
+    upload_dir: Path = Field(default_factory=lambda: _resolve_upload_dir(_resolve_crag_home()))
 
 class AppConfig(BaseModel):
     """Unified Application Configuration Singleton."""
