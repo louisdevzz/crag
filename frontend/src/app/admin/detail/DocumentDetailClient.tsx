@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Circle, Loader2 } from "lucide-react";
 import {
@@ -68,9 +68,9 @@ function Meta({ label, value }: { label: string; value: string | null }) {
 }
 
 export default function DocumentDetailPage() {
-  const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const router = useRouter();
-  const id = params.id;
+  const id = searchParams.get("id") || "";
 
   const [doc, setDoc] = useState<AdminDocumentDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -106,6 +106,11 @@ export default function DocumentDetailPage() {
   };
 
   useEffect(() => {
+    if (!id) {
+      setNotFound(true);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -130,7 +135,7 @@ export default function DocumentDetailPage() {
   }, [id]);
 
   useEffect(() => {
-    if (!doc || doc.status !== "PROCESSING") {
+    if (!id || !doc || doc.status !== "PROCESSING") {
       if (pollRef.current) {
         window.clearInterval(pollRef.current);
         pollRef.current = null;

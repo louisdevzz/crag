@@ -67,7 +67,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({ documents, isLoa
               documents.map((doc) => (
                 <tr
                   key={doc.id}
-                  onClick={() => router.push(`/admin/${doc.id}`)}
+                  onClick={() => router.push(`/admin/detail?id=${doc.id}`)}
                   className="hover:bg-dsh-surface transition-colors cursor-pointer"
                 >
                   <td className="px-4 py-2.5 max-w-xs">
