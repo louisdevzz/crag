@@ -99,6 +99,7 @@ class GenerationOutput(BaseModel):
     answer: str
     claims: List[ClaimItem] = []
     abstain: bool = False
+    follow_up_questions: List[str] = []
 
 
 class CitationReport(BaseModel):
@@ -171,6 +172,7 @@ def chat_endpoint(req: ChatRequest) -> ChatResponse:
             answer=answer_text,
             claims=[ClaimItem(**c) for c in generation.get("claims", [])],
             abstain=generation.get("abstain", False),
+            follow_up_questions=res.get("follow_up_questions", []),
         ),
         citation_report=CitationReport(
             ok=citation_report.get("ok", True),
@@ -219,6 +221,7 @@ async def chat_stream_endpoint(req: ChatRequest) -> StreamingResponse:
         tool_trace: List[Dict[str, Any]] = []
         generation: Dict[str, Any] = {}
         citation_report: Dict[str, Any] = {}
+        follow_up_questions: List[str] = []
         agent_call_index = 0
         answer_streamed = False
 
@@ -238,6 +241,8 @@ async def chat_stream_endpoint(req: ChatRequest) -> StreamingResponse:
                             generation = update["generation"]
                         if "citation_report" in update:
                             citation_report = update["citation_report"]
+                        if "follow_up_questions" in update:
+                            follow_up_questions = update["follow_up_questions"]
 
                         stage = node_stage(node_name, agent_call_index)
                         if node_name == "agent":
@@ -283,6 +288,7 @@ async def chat_stream_endpoint(req: ChatRequest) -> StreamingResponse:
                 "answer": answer_text,
                 "claims": generation.get("claims", []),
                 "abstain": generation.get("abstain", False),
+                "follow_up_questions": follow_up_questions,
             },
             "citation_report": {
                 "ok": citation_report.get("ok", True),
@@ -312,6 +318,24 @@ def get_history(client_id: str, session_id: Optional[str] = None, limit: int = 2
     """Retrieve episodic conversation history for a client, optionally scoped to one session."""
     store = get_memory_store()
     return store.get_query_history(client_id, session_id=session_id, limit=limit)
+
+
+@app.delete("/api/history/{client_id}/{session_id}")
+def delete_conversation(client_id: str, session_id: str) -> Dict[str, Any]:
+    """Delete one conversation thread (and its messages) for a client."""
+    store = get_memory_store()
+    deleted = store.delete_session(client_id, session_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Session not found for this client")
+    return {"client_id": client_id, "session_id": session_id, "deleted": True}
+
+
+@app.delete("/api/history/{client_id}")
+def clear_history(client_id: str) -> Dict[str, Any]:
+    """Delete every conversation (and message) for a client."""
+    store = get_memory_store()
+    deleted_sessions = store.clear_history(client_id)
+    return {"client_id": client_id, "deleted_sessions": deleted_sessions}
 
 
 @app.get("/api/memory/{client_id}")

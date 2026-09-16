@@ -11,6 +11,7 @@ import {
   Scale,
   Search,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import {
   Sidebar,
@@ -20,6 +21,7 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
@@ -34,6 +36,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ConversationSummary, groupConversationsByDay } from "@/lib/history";
 import { LegalDocument } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -46,6 +49,7 @@ interface AppSidebarProps {
   memoryCount: number;
   onNewChat: () => void;
   onSelectConversation: (sessionId: string) => void;
+  onDeleteConversation: (sessionId: string) => void | Promise<void>;
   onSelectPrompt: (prompt: string) => void;
   onOpenSettings?: () => void;
 }
@@ -58,11 +62,13 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   memoryCount,
   onNewChat,
   onSelectConversation,
+  onDeleteConversation,
   onSelectPrompt,
   onOpenSettings,
 }) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<ConversationSummary | null>(null);
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
 
@@ -178,6 +184,17 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                           <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 text-sidebar-foreground/50" />
                           <span className="truncate">{conversation.title}</span>
                         </SidebarMenuButton>
+                        <SidebarMenuAction
+                          showOnHover
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPendingDelete(conversation);
+                          }}
+                          className="hover:text-destructive"
+                        >
+                          <Trash2 />
+                          <span className="sr-only">Xóa cuộc trò chuyện</span>
+                        </SidebarMenuAction>
                       </SidebarMenuItem>
                     ))}
                   </SidebarMenu>
@@ -237,6 +254,21 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
           )}
         </CommandList>
       </CommandDialog>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title="Xóa cuộc trò chuyện?"
+        description={
+          pendingDelete
+            ? `"${pendingDelete.title}" sẽ bị xóa vĩnh viễn cùng toàn bộ lịch sử trao đổi. Hành động này không thể hoàn tác.`
+            : undefined
+        }
+        confirmLabel="Xóa"
+        onConfirm={async () => {
+          if (pendingDelete) await onDeleteConversation(pendingDelete.sessionId);
+        }}
+      />
     </>
   );
 };

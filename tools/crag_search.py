@@ -1,17 +1,4 @@
 """CRAG Tool: the single internal-knowledge tool the Agent Core can call.
-
-Pure hybrid retrieval + self-correction, exactly the pipeline drawn in
-`docs/agent-crag-architecture.png` under the "CRAG Tool" box — Dense (Chroma)
-+ BM25 -> RRF fusion -> cross-encoder rerank -> threshold evaluation
-(CORRECT/AMBIGUOUS/INCORRECT) -> knowledge refinement into legal strips.
-No SQL/database lookup step: there is no "database tool" or "user chats then
-searches a database" branch in this architecture, only this one retrieval
-tool plus `controlled_web_search`.
-
-Returns evidence plus a `guidance` string telling the calling LLM whether it
-should consider a follow-up `controlled_web_search` call before answering —
-this is what makes the correction agentic (a tool-use decision) rather than a
-hardcoded graph branch.
 """
 from __future__ import annotations
 
@@ -107,6 +94,7 @@ def _get_catalog_evidence(db_path: str = str(DB_PATH)) -> List[Dict[str, Any]]:
         log.warning("[CRAG] Failed to query catalog: %s", e)
         return []
 
+
 def crag_search(query: str, db_path: str = str(DB_PATH)) -> Dict[str, Any]:
     """Hybrid retrieval + self-correction over the indexed legal knowledge base."""
     if _is_catalog_query(query):
@@ -133,13 +121,14 @@ def crag_search(query: str, db_path: str = str(DB_PATH)) -> Dict[str, Any]:
     action = decide_crag_action(scores, t_low=T_LOW, t_high=T_HIGH)
     strips = refine_internal(query, reranked)
 
-    return {
+    result = {
         "crag_action": action,
         "guidance": _ACTION_GUIDANCE[action],
         "evidence": strips,
         "dense_candidates": len(dense_hits),
         "bm25_candidates": len(bm25_hits),
     }
+    return result
 
 
 class CragSearchTool(BaseLegalTool):

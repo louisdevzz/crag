@@ -32,4 +32,5 @@ class AgentState(TypedDict, total=False):
     # 3. Generation & Verification Output
     generation: Dict[str, Any]                # {"answer": str, "claims": [...], "abstain": bool}
     citation_report: Dict[str, Any]           # Validation result from CitationValidator
+    follow_up_questions: List[str]            # Suggested next questions, generated from the answer (agent.followups)
     trace_meta: Dict[str, Any]                # Observability metadata

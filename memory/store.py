@@ -91,6 +91,25 @@ class MemoryStore:
             con.commit()
         return sid
 
+    def delete_session(self, client_id: str, session_id: str) -> bool:
+        """Delete one conversation thread, scoped to its owning client so a client
+        can never delete another client's session. `messages` cascade via the FK
+        (`ON DELETE CASCADE` in schema.sql)."""
+        with get_connection(self.db_path) as con:
+            cur = con.cursor()
+            cur.execute("DELETE FROM sessions WHERE id = ? AND client_id = ?", (session_id, client_id))
+            con.commit()
+            return cur.rowcount > 0
+
+    def clear_history(self, client_id: str) -> int:
+        """Delete every session (and cascade every message) owned by a client.
+        Returns the number of sessions deleted."""
+        with get_connection(self.db_path) as con:
+            cur = con.cursor()
+            cur.execute("DELETE FROM sessions WHERE client_id = ?", (client_id,))
+            con.commit()
+            return cur.rowcount
+
     # ------------------------------------------------------------------ messages (short-term memory)
     def log_message(
         self,

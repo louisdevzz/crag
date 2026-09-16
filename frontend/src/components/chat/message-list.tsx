@@ -182,7 +182,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   const getStageLabel = (stage: number | null) => {
     switch (stage) {
       case 0:
-        return "Đang suy nghĩ & phân tích yêu cầu...";
+        return "Đang suy nghĩ...";
       case 1:
         return "Đang tra cứu kho tri thức pháp lý...";
       case 2:

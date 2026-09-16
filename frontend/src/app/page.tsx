@@ -2,7 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import {
+  clearAllHistory,
   clearClientMemory,
+  deleteConversation,
   fetchAdminSettings,
   fetchClientMemory,
   fetchDocuments,
@@ -251,6 +253,24 @@ export default function HomePage() {
     }
   };
 
+  const handleDeleteConversation = async (targetSessionId: string) => {
+    if (!clientId) return;
+    const ok = await deleteConversation(clientId, targetSessionId);
+    if (!ok) return;
+    setHistoryItems((prev) => prev.filter((item) => item.session_id !== targetSessionId));
+    if (targetSessionId === sessionId) {
+      handleNewChat();
+    }
+  };
+
+  const handleClearHistory = async () => {
+    if (!clientId) return;
+    const ok = await clearAllHistory(clientId);
+    if (!ok) return;
+    setHistoryItems([]);
+    handleNewChat();
+  };
+
   const conversations = summarizeHistoryBySession(historyItems);
   const memoryCount = Object.keys(memories).length;
 
@@ -274,6 +294,7 @@ export default function HomePage() {
           memoryCount={memoryCount}
           onNewChat={handleNewChat}
           onSelectConversation={handleSelectConversation}
+          onDeleteConversation={handleDeleteConversation}
           onSelectPrompt={handleSendMessage}
           onOpenSettings={() => setIsSettingsOpen(true)}
         />
@@ -309,6 +330,8 @@ export default function HomePage() {
         onModelChange={(model: ModelSettings) => setModelLabel(model.model)}
         memories={memories}
         onClearMemory={handleClearMemory}
+        onClearHistory={handleClearHistory}
+        hasHistory={historyItems.length > 0}
       />
     </>
   );

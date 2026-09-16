@@ -83,8 +83,14 @@ def validate_citations(
             claims_with_valid_citation += 1
 
     total_claims = len(claims)
+    if total_claims == 0 and not answer.get("abstain"):
+        errors.append("Câu trả lời có kết luận nhưng không có mệnh đề nào kèm trích dẫn.")
     accuracy = (len(valid_citations) / total_cited) if total_cited > 0 else (1.0 if answer.get("abstain") else 0.0)
-    coverage = (claims_with_valid_citation / total_claims) if total_claims > 0 else 1.0
+    coverage = (
+        claims_with_valid_citation / total_claims
+        if total_claims > 0
+        else (1.0 if answer.get("abstain") else 0.0)
+    )
 
     return {
         "ok": len(errors) == 0,

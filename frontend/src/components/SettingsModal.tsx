@@ -6,6 +6,7 @@ import { fetchAdminSettings, updateAdminModel } from "../lib/api";
 import { AdminSettings, ModelSettings, ProviderOption } from "../lib/types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 
 interface SettingsModalProps {
@@ -14,6 +15,8 @@ interface SettingsModalProps {
   onModelChange?: (model: ModelSettings) => void;
   memories?: Record<string, string>;
   onClearMemory?: () => void;
+  onClearHistory?: () => void;
+  hasHistory?: boolean;
 }
 
 type Tab = "general" | "models";
@@ -24,6 +27,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onModelChange,
   memories = {},
   onClearMemory,
+  onClearHistory,
+  hasHistory = false,
 }) => {
   const [tab, setTab] = useState<Tab>("general");
   const [settings, setSettings] = useState<AdminSettings | null>(null);
@@ -107,7 +112,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 Đang tải cấu hình...
               </div>
             ) : tab === "general" ? (
-              <GeneralTab settings={settings} memories={memories} onClearMemory={onClearMemory} />
+              <GeneralTab
+                settings={settings}
+                memories={memories}
+                onClearMemory={onClearMemory}
+                onClearHistory={onClearHistory}
+                hasHistory={hasHistory}
+              />
             ) : (
               <div>
                 <h3 className="mb-1 text-lg font-bold text-foreground">Mô hình</h3>
@@ -207,8 +218,11 @@ const GeneralTab: React.FC<{
   settings: AdminSettings;
   memories: Record<string, string>;
   onClearMemory?: () => void;
-}> = ({ settings, memories, onClearMemory }) => {
+  onClearHistory?: () => void;
+  hasHistory?: boolean;
+}> = ({ settings, memories, onClearMemory, onClearHistory, hasHistory = false }) => {
   const memoryEntries = Object.entries(memories);
+  const [confirmClearHistory, setConfirmClearHistory] = useState(false);
   return (
     <div>
       <h3 className="mb-1 text-lg font-bold text-foreground">Chung</h3>
@@ -224,17 +238,38 @@ const GeneralTab: React.FC<{
       </div>
 
       <div className="mt-5 flex items-center justify-between">
-        <h4 className="text-sm font-bold text-foreground">Hồ sơ doanh nghiệp</h4>
-        {memoryEntries.length > 0 && onClearMemory && (
-          <button
-            onClick={onClearMemory}
-            className="text-xs font-semibold text-destructive hover:underline"
-          >
-            Xóa hồ sơ
-          </button>
-        )}
+        <h4 className="text-sm font-bold text-foreground">Dữ liệu của bạn</h4>
       </div>
-      <div className="mt-2 rounded-2xl bg-secondary p-3 text-xs">
+      <div className="mt-2 divide-y divide-border rounded-2xl bg-secondary text-xs">
+        <div className="flex items-center justify-between px-4 py-3">
+          <span className="font-medium text-muted-foreground">Lịch sử trò chuyện</span>
+          {hasHistory && onClearHistory ? (
+            <button
+              onClick={() => setConfirmClearHistory(true)}
+              className="text-xs font-semibold text-destructive hover:underline"
+            >
+              Xóa tất cả
+            </button>
+          ) : (
+            <span className="text-muted-foreground/60">Trống</span>
+          )}
+        </div>
+        <div className="flex items-center justify-between px-4 py-3">
+          <span className="font-medium text-muted-foreground">Hồ sơ doanh nghiệp</span>
+          {memoryEntries.length > 0 && onClearMemory ? (
+            <button
+              onClick={onClearMemory}
+              className="text-xs font-semibold text-destructive hover:underline"
+            >
+              Xóa hồ sơ
+            </button>
+          ) : (
+            <span className="text-muted-foreground/60">Trống</span>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-2xl bg-secondary p-3 text-xs">
         {memoryEntries.length === 0 ? (
           <p className="italic leading-relaxed text-muted-foreground">
             Chưa ghi nhận bối cảnh doanh nghiệp. Hãy nêu thông tin công ty trong câu hỏi để AI ghi nhớ.
@@ -252,6 +287,17 @@ const GeneralTab: React.FC<{
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmClearHistory}
+        onOpenChange={setConfirmClearHistory}
+        title="Xóa toàn bộ lịch sử trò chuyện?"
+        description="Tất cả cuộc trò chuyện và tin nhắn sẽ bị xóa vĩnh viễn khỏi máy chủ. Hành động này không thể hoàn tác."
+        confirmLabel="Xóa tất cả"
+        onConfirm={async () => {
+          if (onClearHistory) await onClearHistory();
+        }}
+      />
     </div>
   );
 };

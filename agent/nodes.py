@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.config import get_stream_writer
 
+from agent.followups import generate_follow_ups
 from agent.prompts import build_system_prompt
 from agent.state import AgentState
 from legal.citations import validate_citations
@@ -29,6 +30,11 @@ log = get_logger(__name__)
 # node stops offering tools and is forced to answer with whatever evidence it
 # already gathered (never loop forever on a model that keeps calling tools).
 MAX_TOOL_ROUNDS = 3
+
+# Independent bound on how many times the model gets nudged about an evidence gap
+# before its answer is simply accepted as-is — separate from MAX_TOOL_ROUNDS because
+# a nudge (plain SystemMessage, no tool_calls) never increments the tool-round count.
+MAX_EVIDENCE_GAP_NUDGES = 2
 
 _GENERAL_FALLBACK = {
     "answer": "Xin chào! Tôi là trợ lý AI hỗ trợ tra cứu tuân thủ pháp lý doanh nghiệp. Bạn cần tôi tra cứu quy định gì?",
@@ -52,6 +58,34 @@ _FINAL_ROUND_NOTICE = (
     "nguyên văn 'Chưa đủ căn cứ pháp lý để kết luận.' TUYỆT ĐỐI không chào hỏi, không hỏi lại, không nói "
     "cần tra cứu thêm."
 )
+
+
+_EVIDENCE_GAP_NUDGE_PREFIX = "[Ghi chú nội bộ] "
+
+
+def _evidence_gap_nudge(state: AgentState) -> Optional[str]:
+    """Describe, in plain language, that the internal evidence still looks weak —
+    never which tool to call next or with what argument. The model reads this
+    exactly like any other tool result and decides for itself whether and how to
+    search further; naming the fix here would turn tool selection into an if/else
+    in the harness instead of a model decision. The signal itself
+    (`crag_action`) comes from the cross-encoder reranker's calibrated score
+    thresholds (`retrieval.reranker.decide_crag_action`), not from keyword
+    matching — this function adds no domain-specific heuristics of its own."""
+    tool_trace = state.get("tool_trace") or []
+    crag_calls = [t for t in tool_trace if t.get("tool") == "crag_search"]
+    if not crag_calls:
+        return None
+
+    web_search_tried = any(t.get("tool") == "controlled_web_search" for t in tool_trace)
+    last_crag_action = crag_calls[-1].get("crag_action")
+    if not web_search_tried and last_crag_action != "CORRECT":
+        return (
+            f"{_EVIDENCE_GAP_NUDGE_PREFIX}Bằng chứng nội bộ hiện được đánh giá là {last_crag_action}, "
+            "chưa đủ tin cậy để trả lời trực tiếp. Hãy tự quyết định có cần tìm kiếm bổ sung hay không "
+            "trước khi đưa câu trả lời cuối cùng."
+        )
+    return None
 
 
 _LEAKED_FUNCTION_RE = re.compile(r"<function=([\w.\-]+)>([\s\S]*?)</function>", re.IGNORECASE)
@@ -128,16 +162,6 @@ def _parse_generation_flexible(content: Any, evidence: List[Dict[str, Any]] = No
         cites = citation_regex.findall(s)
         if cites:
             claims.append({"text": s, "source_ids": cites})
-
-    # If no explicit citation brackets in text but evidence was gathered, associate top evidence
-    if not claims and evidence:
-        top_ids = [
-            e.get("strip_id") or e.get("locator") or e.get("evidence_id")
-            for e in evidence[:3]
-            if (e.get("strip_id") or e.get("locator") or e.get("evidence_id"))
-        ]
-        if top_ids:
-            claims.append({"text": clean_text[:200], "source_ids": top_ids})
 
     lower_text = clean_text.lower()
     abstain = "chưa đủ căn cứ pháp lý" in lower_text or "không đủ căn cứ pháp lý" in lower_text
@@ -219,27 +243,28 @@ def agent_node(state: AgentState) -> Dict[str, Any]:
             ai_msg = AIMessage(content="", tool_calls=leaked_calls)
             return {"messages": [ai_msg]}
 
-        # Deterministic self-correction guard: the model is free to decide *when* to call
-        # controlled_web_search, but it is not free to skip it entirely after crag_search
-        # itself reported the internal evidence AMBIGUOUS/INCORRECT (or failed outright) —
-        # that is exactly the CRAG "corrective" step, and leaving it purely to the model's
-        # judgment produced ungrounded "chưa đủ căn cứ pháp lý" abstentions in practice.
-        tool_trace = state.get("tool_trace") or []
-        web_search_tried = any(t.get("tool") == "controlled_web_search" for t in tool_trace)
-        crag_calls = [t for t in tool_trace if t.get("tool") == "crag_search"]
-        last_crag_action = crag_calls[-1].get("crag_action") if crag_calls else None
-        if crag_calls and not web_search_tried and last_crag_action != "CORRECT":
-            log.warning(
-                "[AGENT] internal evidence insufficient (crag_action=%s) and model answered "
-                "without trying controlled_web_search -> forcing a web-search round",
-                last_crag_action,
-            )
-            forced_call = {
-                "name": "controlled_web_search",
-                "args": {"query": state.get("query", "")},
-                "id": f"forced_web_search_{uuid.uuid4().hex[:8]}",
-            }
-            return {"messages": [AIMessage(content="", tool_calls=[forced_call])]}
+        # Corrective nudge, not corrective dictation: the harness is only allowed to
+        # SURFACE a fact (evidence looks incomplete for what the user asked) as plain
+        # text, the same shape as any other tool result the model reads — it never
+        # fabricates a fake AIMessage naming which tool to call with which args on
+        # the model's behalf. That would make crag_search/controlled_web_search
+        # selection an if/else in the harness instead of a real agent decision (see
+        # `.temp/hermes-agent/AGENTS.md`: "the core is a narrow waist; capability
+        # lives at the edges" — domain judgment belongs to the model). Bounded like
+        # every other retry loop in this file (MAX_EVIDENCE_GAP_NUDGES) so a model
+        # that ignores the nudge still terminates instead of looping forever.
+        nudge_count = sum(
+            1 for m in messages
+            if isinstance(m, SystemMessage) and m.content.startswith(_EVIDENCE_GAP_NUDGE_PREFIX)
+        )
+        if nudge_count < MAX_EVIDENCE_GAP_NUDGES:
+            nudge = _evidence_gap_nudge(state)
+            if nudge:
+                log.info(
+                    "[AGENT] evidence gap detected -> nudging model to decide its own next step (attempt %d/%d): %s",
+                    nudge_count + 1, MAX_EVIDENCE_GAP_NUDGES, nudge[:160],
+                )
+                return {"messages": [SystemMessage(content=nudge)]}
 
     updates: Dict[str, Any] = {"messages": ([final_round_reminder] if final_round_reminder else []) + [ai_msg]}
     if not ai_msg.tool_calls:
@@ -292,6 +317,7 @@ def tool_node(state: AgentState) -> Dict[str, Any]:
         new_trace.append({
             "tool": name, "args": args, "crag_action": crag_action,
             "success": result.success, "evidence_count": len(evidence),
+            "aspects": payload.get("aspects") if payload else None,
         })
 
         if result.success:
@@ -352,7 +378,8 @@ def validate_citations_node(state: AgentState) -> Dict[str, Any]:
         "[CITE_VALIDATE] ok=%s accuracy=%.2f coverage=%.2f errors=%d",
         report.get("ok"), report.get("citation_accuracy", 0.0), report.get("citation_coverage", 0.0), len(report.get("errors", [])),
     )
-    return {"citation_report": report}
+    follow_ups = generate_follow_ups(state.get("query", ""), generation.get("answer", ""))
+    return {"citation_report": report, "follow_up_questions": follow_ups}
 
 
 def derive_route_and_action(tool_trace: List[Dict[str, Any]]) -> Tuple[str, str]:

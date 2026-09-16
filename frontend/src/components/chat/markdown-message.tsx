@@ -18,7 +18,6 @@ interface MarkdownMessageProps {
 export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
   content,
   evidence = [],
-  claims = [],
   isStreaming = false,
   className,
 }) => {
@@ -54,57 +53,9 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
     return { idToRef: idMap, numToEvidence: numMap };
   }, [evidence]);
 
-  // Pre-process content: if content does not have any bracketed citations [1], [E1], [DOC_...],
-  // but evidence exists, attach citations to the key statements/claims
-  const processedContent = useMemo(() => {
-    if (!content) return "";
-    if (evidence.length === 0) return content;
-
-    const hasBracketCitation = /\[([A-Za-z0-9_\-]+)\]/.test(content);
-    if (hasBracketCitation) {
-      return content;
-    }
-
-    // If claims are available, try to match claim sentences
-    let modified = content;
-    let injected = false;
-
-    if (claims && claims.length > 0) {
-      claims.forEach((claim, idx) => {
-        const claimText = (claim.text || "").trim();
-        if (!claimText) return;
-
-        // Try exact match or substring
-        const pos = modified.indexOf(claimText);
-        if (pos !== -1) {
-          const refIndex = idx + 1 <= evidence.length ? idx + 1 : 1;
-          const endPos = pos + claimText.length;
-          modified = modified.slice(0, endPos) + ` [${refIndex}]` + modified.slice(endPos);
-          injected = true;
-        }
-      });
-    }
-
-    // If no claims matched, or no claims provided, attach to law mentions e.g. "Điều ...", or end of first sentence
-    if (!injected && evidence.length > 0) {
-      // Find statutory mention or first period
-      const lawMentionRegex = /(Điều\s+\d+[^,.;:]*|Khoản\s+\d+[^,.;:]*|Bộ luật[^,.;:]*|Luật[^,.;:]*)/i;
-      const match = lawMentionRegex.exec(modified);
-      if (match) {
-        const insertAt = match.index + match[0].length;
-        modified = modified.slice(0, insertAt) + " [1]" + modified.slice(insertAt);
-      } else {
-        const firstSentenceEnd = modified.indexOf(".");
-        if (firstSentenceEnd !== -1) {
-          modified = modified.slice(0, firstSentenceEnd) + " [1]" + modified.slice(firstSentenceEnd);
-        } else {
-          modified = modified + " [1]";
-        }
-      }
-    }
-
-    return modified;
-  }, [content, evidence, claims]);
+  // Citations are rendered only when the model/backend explicitly supplied
+  // them.  The UI must never make an unsupported answer look sourced.
+  const processedContent = content || "";
 
   // Function to replace raw citation brackets [DOC_...], [E1], [1] with interactive CitationBadge
   const renderTextWithCitations = (text: string): React.ReactNode => {

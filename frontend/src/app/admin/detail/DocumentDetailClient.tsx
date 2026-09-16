@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Circle, Loader2 } from "lucide-react";
 import {
+  deleteConversation,
   fetchAdminDocumentChunks,
   fetchAdminDocumentDetail,
   fetchDocuments,
@@ -180,6 +181,12 @@ export default function DocumentDetailPage() {
 
   const conversations = summarizeHistoryBySession(historyItems);
 
+  const handleDeleteConversation = async (sessionId: string) => {
+    if (!clientId) return;
+    const ok = await deleteConversation(clientId, sessionId);
+    if (ok) setHistoryItems((prev) => prev.filter((item) => item.session_id !== sessionId));
+  };
+
   return (
     <SidebarProvider>
       <AppSidebar
@@ -190,6 +197,7 @@ export default function DocumentDetailPage() {
         memoryCount={0}
         onNewChat={() => router.push("/")}
         onSelectConversation={(sessionId) => router.push(`/?session_id=${sessionId}`)}
+        onDeleteConversation={handleDeleteConversation}
         onSelectPrompt={(prompt) => router.push(`/?prompt=${encodeURIComponent(prompt)}`)}
       />
 

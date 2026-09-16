@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import {
+  deleteConversation,
   fetchAdminDocuments,
   fetchAdminStats,
   fetchDocuments,
@@ -70,6 +71,12 @@ export default function AdminPage() {
     loadData();
   };
 
+  const handleDeleteConversation = async (sessionId: string) => {
+    if (!clientId) return;
+    const ok = await deleteConversation(clientId, sessionId);
+    if (ok) setHistoryItems((prev) => prev.filter((item) => item.session_id !== sessionId));
+  };
+
   const conversations = summarizeHistoryBySession(historyItems);
 
   return (
@@ -82,6 +89,7 @@ export default function AdminPage() {
         memoryCount={0}
         onNewChat={() => router.push("/")}
         onSelectConversation={(sessionId) => router.push(`/?session_id=${sessionId}`)}
+        onDeleteConversation={handleDeleteConversation}
         onSelectPrompt={(prompt) => router.push(`/?prompt=${encodeURIComponent(prompt)}`)}
       />
 

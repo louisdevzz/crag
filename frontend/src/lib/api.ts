@@ -120,6 +120,32 @@ export async function fetchHistory(
   }
 }
 
+export async function deleteConversation(clientId: string, sessionId: string): Promise<boolean> {
+  const apiBase = getApiBase();
+  try {
+    const res = await fetch(`${apiBase}/api/history/${clientId}/${sessionId}`, {
+      method: "DELETE",
+    });
+    return res.ok;
+  } catch (e) {
+    console.error("Failed to delete conversation", e);
+    return false;
+  }
+}
+
+export async function clearAllHistory(clientId: string): Promise<boolean> {
+  const apiBase = getApiBase();
+  try {
+    const res = await fetch(`${apiBase}/api/history/${clientId}`, {
+      method: "DELETE",
+    });
+    return res.ok;
+  } catch (e) {
+    console.error("Failed to clear history", e);
+    return false;
+  }
+}
+
 export async function fetchClientMemory(clientId: string): Promise<ClientMemoryProfile | null> {
   const apiBase = getApiBase();
   try {
