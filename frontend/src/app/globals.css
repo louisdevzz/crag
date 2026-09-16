@@ -44,6 +44,63 @@
     --sidebar-accent-foreground: 0 0% 4%;
     --sidebar-border: 240 6% 90%;
     --sidebar-ring: 239 84% 67%;
+
+    /* Beautiful UI Tokens - Light */
+    --page: oklch(0.985 0.001 286.376);
+    --canvas: oklch(0.961 0.002 247.84);
+    --surface: oklch(1 0 0);
+    --inset: oklch(0.979 0.002 247.839);
+    --hover: oklch(0.97 0.002 247.839);
+    --hover-2: oklch(0.933 0.003 247.86);
+    --ink: oklch(0.247 0.006 258.361);
+    --ink-2: oklch(0.506 0.01 264.477);
+    --ink-3: oklch(0.695 0.009 264.505);
+    --line: oklch(0.946 0.003 264.542);
+    --line-strong: oklch(0.912 0.005 258.326);
+    --line-soft: oklch(0.966 0.002 264.542);
+    --field: oklch(0.961 0.001 286.375);
+    --accent-ink: oklch(0.556 0.187 255.617);
+    --accent-tint: oklch(0.96 0.019 252.878);
+    --green: oklch(0.603 0.155 150.883);
+    --green-tint: oklch(0.958 0.017 159.118);
+    --orange: oklch(0.689 0.179 49.902);
+    --orange-tint: oklch(0.964 0.021 67.581);
+    --red: oklch(0.621 0.192 23.042);
+    --red-tint: oklch(0.956 0.017 17.462);
+    --shadow-hairline: 0 0 0 1px var(--line);
+    --shadow-btn: 0 0 0 1px var(--line-strong), 0 1px 2px oklch(0 0 0 / 0.05);
+    --shadow-card: 0 0 0 1px var(--line), 0 1px 3px oklch(0 0 0 / 0.05), 0 2px 6px oklch(0 0 0 / 0.03);
+    --shadow-raised: 0 0 0 1px var(--line), 0 2px 10px oklch(0 0 0 / 0.08);
+    --shadow-overlay: 0 0 0 1px var(--line), 0 8px 28px oklch(0 0 0 / 0.12);
+  }
+
+  .dark {
+    --page: oklch(0.209 0.004 264.477);
+    --canvas: oklch(0.231 0.004 264.487);
+    --surface: oklch(0.26 0.006 271.191);
+    --inset: oklch(0.243 0.004 264.492);
+    --hover: oklch(0.289 0.006 271.22);
+    --hover-2: oklch(0.318 0.007 274.747);
+    --ink: oklch(0.964 0.002 247.839);
+    --ink-2: oklch(0.731 0.008 260.731);
+    --ink-3: oklch(0.541 0.01 264.484);
+    --line: oklch(0.308 0.006 258.354);
+    --line-strong: oklch(0.356 0.007 264.474);
+    --line-soft: oklch(0.278 0.006 258.354);
+    --field: oklch(0.293 0.006 271.223);
+    --accent-ink: oklch(0.788 0.113 248.33);
+    --accent-tint: oklch(0.68 0.173 253.301 / 0.16);
+    --green: oklch(0.705 0.154 153.814);
+    --green-tint: oklch(0.705 0.154 153.814 / 0.14);
+    --orange: oklch(0.746 0.156 55.642);
+    --orange-tint: oklch(0.746 0.156 55.642 / 0.14);
+    --red: oklch(0.666 0.18 21.433);
+    --red-tint: oklch(0.666 0.18 21.433 / 0.14);
+    --shadow-hairline: 0 0 0 1px var(--line);
+    --shadow-btn: 0 0 0 1px oklch(1 0 0 / 0.1), 0 1px 2px oklch(0 0 0 / 0.3);
+    --shadow-card: 0 0 0 1px oklch(1 0 0 / 0.11), 0 1px 2px oklch(0 0 0 / 0.2), 0 2px 6px oklch(0 0 0 / 0.2);
+    --shadow-raised: 0 0 0 1px oklch(1 0 0 / 0.13), 0 2px 10px oklch(0 0 0 / 0.22);
+    --shadow-overlay: 0 0 0 1px oklch(1 0 0 / 0.15), 0 8px 28px oklch(0 0 0 / 0.34);
   }
 }
 
@@ -158,4 +215,96 @@
   .bui-agent-thinking-comet {
     animation: none;
   }
+}
+
+/* Beautiful UI Animation & Stream Utilities */
+@keyframes shimmer-text {
+  from {
+    background-position: 150% center;
+  }
+  to {
+    background-position: -50% center;
+  }
+}
+
+@keyframes pixel-on {
+  0%, 100% {
+    opacity: 0.15;
+  }
+  18%, 42% {
+    opacity: 1;
+  }
+  62% {
+    opacity: 0.15;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes caret-blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.stream-caret {
+  display: inline-block;
+  width: 2px;
+  height: 14px;
+  margin-left: 2px;
+  background-color: var(--ink);
+  vertical-align: -2px;
+  border-radius: 1px;
+}
+
+.stream-caret.is-streaming {
+  opacity: 1;
+}
+
+.stream-caret:not(.is-streaming) {
+  animation: caret-blink 1s ease-in-out infinite;
+}
+
+.stream-tail {
+  filter: blur(1.5px);
+  opacity: 0.8;
+  transition: filter 120ms ease-out, opacity 120ms ease-out;
+}
+
+.animated-underline {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--line-strong);
 }

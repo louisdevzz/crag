@@ -1,160 +1,197 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Check, Copy, Globe, Scale, Sparkles } from "lucide-react";
+import { Check, Copy, Globe, RotateCcw, Scale, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
 import { EvidenceItem, Message } from "@/lib/types";
 import { MarkdownMessage } from "./markdown-message";
 import { MessageScroller } from "./message-scroller";
-import { StreamingResponse } from "@/components/agents/streaming-response";
-import { AgentActivity, AgentActivityItem } from "@/components/agents/agent-activity";
-import { CitationItem } from "@/components/agents/citations";
+import LoadingState from "@/components/beautiful/LoadingState";
+import ThinkingState, { ThinkingRow } from "@/components/beautiful/ThinkingState";
+import ToolChips, { ToolDiff, ToolStep } from "@/components/beautiful/ToolChips";
+import ContextCards, { ContextChunk } from "@/components/beautiful/ContextCards";
+import SelectionActions from "@/components/beautiful/SelectionActions";
+import StreamingText from "@/components/beautiful/StreamingText";
 import { cn } from "@/lib/utils";
 
 interface MessageListProps {
   messages: Message[];
   isLoading: boolean;
   liveStage: number | null;
+  onFollowUp?: (query: string) => void;
+  onRetry?: () => void;
 }
 
-function toCitationItems(evidence?: EvidenceItem[]): CitationItem[] {
+function toContextChunks(evidence?: EvidenceItem[]): ContextChunk[] {
   if (!evidence || evidence.length === 0) return [];
-  const unique: CitationItem[] = [];
-  const seen = new Set<string>();
+  return evidence.map((e, idx) => {
+    const isExt = Boolean(e.source_url || (e.strip_id && e.strip_id.startsWith("EXT_")));
+    return {
+      title: e.heading || `Căn cứ pháp lý #${idx + 1}`,
+      chars: e.strip_id || e.locator || `${(e.text || "").length} ký tự`,
+      body: e.text || "",
+      source:
+        e.metadata?.document_title ||
+        (isExt ? "Cổng thông tin pháp luật chính thống" : "Kho văn bản QPPL nội bộ"),
+      badge: isExt ? "Cổng Web" : "Văn bản QPPL",
+      tone: isExt ? "bg-orange" : "bg-accent",
+      sourceUrl: e.source_url,
+    };
+  });
+}
 
-  evidence.forEach((item, i) => {
-    const key = item.strip_id || item.evidence_id || `${item.document_number}_${item.heading}` || `ref_${i}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      const isWeb = item.retrieval_source === "web" || item.strip_id?.startsWith("WEB_");
-      unique.push({
-        id: item.strip_id || item.evidence_id || `source-${i + 1}`,
-        title: item.document_title || item.document_number || item.heading || `Văn bản QPPL #${i + 1}`,
-        domain: isWeb ? "Cổng thông tin pháp luật chính thống" : (item.heading || "Kho tri thức văn bản QPPL"),
-        excerpt: item.text,
-        score: item.score,
+function toToolSteps(msg: Message): ToolStep[] {
+  const steps: ToolStep[] = [];
+  const trace = msg.trace;
+  if (!trace) return steps;
+
+  if (trace.route === "rag" || (trace.evidence && trace.evidence.length > 0)) {
+    steps.push({
+      icon: "search",
+      label: "crag_search",
+      chip: `evidence: ${trace.evidence?.length || 0} mục`,
+      mono: true,
+      detailMono: true,
+      detail: [
+        { text: `✓ Phân luồng: ${trace.route.toUpperCase()}`, tone: "ctx" },
+        {
+          text: `✓ Đánh giá CRAG: ${trace.cragAction || "CORRECT"}`,
+          tone: trace.cragAction === "CORRECT" ? "add" : "ctx",
+        },
+      ],
+    });
+  }
+
+  const extEvidence = (trace.evidence || []).filter(
+    (e) => e.source_url || (e.strip_id && e.strip_id.startsWith("EXT_")),
+  );
+  if (extEvidence.length > 0) {
+    steps.push({
+      icon: "run",
+      label: "controlled_web_search",
+      chip: `${extEvidence.length} kết quả TinyFish`,
+      mono: true,
+      detailMono: true,
+      detail: [
+        {
+          text: `✓ Nguồn tra cứu: ${extEvidence
+            .map((e) => e.source_domain || "vbpl.vn")
+            .slice(0, 3)
+            .join(", ")}`,
+          tone: "add",
+        },
+      ],
+    });
+  }
+
+  if (msg.citationReport && msg.citationReport.valid_citations?.length > 0) {
+    steps.push({
+      icon: "read",
+      label: "validate_citations",
+      chip: `độ chính xác ${(msg.citationReport.citation_accuracy * 100).toFixed(0)}%`,
+      mono: true,
+      detailMono: true,
+      detail: [
+        {
+          text: `✓ Căn cứ hợp lệ: ${msg.citationReport.valid_citations.join(", ")}`,
+          tone: "add",
+        },
+      ],
+    });
+  }
+
+  return steps;
+}
+
+function toThinkingRows(msg: Message): ThinkingRow[] {
+  const rows: ThinkingRow[] = [];
+  const isRag =
+    (msg.trace?.route || "").toLowerCase() === "rag" ||
+    (msg.trace?.evidence?.length || 0) > 0;
+
+  rows.push({ primary: "Phân tích yêu cầu pháp lý của người dùng" });
+  if (isRag) {
+    rows.push({
+      primary: "Tra cứu kho tri thức văn bản quy phạm",
+      secondary: `${msg.trace?.evidence?.length || 0} căn cứ`,
+    });
+    if (msg.trace?.cragAction) {
+      rows.push({
+        primary: `Tự hiệu chỉnh CRAG: ${msg.trace.cragAction}`,
+        secondary:
+          msg.trace.cragAction === "CORRECT"
+            ? "Bằng chứng đầy đủ"
+            : "Mở rộng tra cứu cổng công quyền",
       });
     }
-  });
-
-  return unique;
+  }
+  if (
+    msg.citationReport?.valid_citations &&
+    msg.citationReport.valid_citations.length > 0
+  ) {
+    rows.push({
+      primary: "Kiểm tra hiệu lực thời gian & đối chiếu điều khoản",
+      secondary: `${msg.citationReport.valid_citations.length} điều luật`,
+    });
+  }
+  rows.push({ primary: "Hoàn thiện kết luận pháp lý và trích dẫn chuẩn hóa" });
+  return rows;
 }
 
-function toActivityItems(msg: Message): AgentActivityItem[] {
-  const items: AgentActivityItem[] = [];
-  const isRag = (msg.trace?.route || "").toLowerCase() === "rag" || (msg.trace?.evidence?.length || 0) > 0;
-  const action = (msg.trace?.cragAction || "").toUpperCase();
-
-  // Step 1: Think — only meaningful for RAG turns (search/CRAG/citation chain
-  // follows it); a plain chit-chat reply has nothing to disclose beyond the
-  // "Đã suy nghĩ" timing header, so no item is pushed for it.
-  if (isRag) {
-    items.push({
-      id: `${msg.id}-think`,
-      type: "text",
-      label: "Suy nghĩ",
-      content: "Xác định câu hỏi pháp lý và các văn bản quy phạm liên quan trong kho tri thức doanh nghiệp.",
-      status: "complete",
-    });
+function getFollowUpsForMessage(content: string): string[] {
+  const lower = content.toLowerCase();
+  if (lower.includes("thời giờ làm việc") || lower.includes("giờ làm")) {
+    return [
+      "Quy định về thời gian nghỉ ngơi giữa ca làm việc?",
+      "Tiền lương làm thêm giờ vào ban đêm tính thế nào?",
+      "Người lao động làm việc vào ngày lễ được hưởng lương bao nhiêu?",
+    ];
   }
-
-  // Step 2: Search (if RAG)
-  if (isRag) {
-    const evidenceList = msg.trace?.evidence || [];
-    items.push({
-      id: `${msg.id}-search`,
-      type: "search",
-      label: "Tra cứu & Bóc tách phân đoạn (Chunking Retrieval)",
-      status: "complete",
-      meta: evidenceList.length > 0 ? `${evidenceList.length} phân đoạn` : undefined,
-      content: (
-        <div className="mt-1 space-y-2">
-          <p className="text-[11px] text-muted-foreground">
-            {evidenceList.length > 0
-              ? `Đã bóc tách và nạp ${evidenceList.length} phân đoạn (chunks) từ kho quy phạm pháp luật:`
-              : "Truy hồi các điều khoản quy phạm tương ứng."}
-          </p>
-          {evidenceList.length > 0 && (
-            <div className="space-y-1.5 pt-0.5">
-              {evidenceList.slice(0, 5).map((chunk, idx) => {
-                const title =
-                  chunk.heading || chunk.document_title || chunk.locator || `Phân đoạn #${idx + 1}`;
-                const scorePercent = chunk.score != null ? Math.round(chunk.score * 100) : null;
-                const isWeb = chunk.retrieval_source === "web" || chunk.strip_id?.startsWith("WEB_");
-                return (
-                  <div
-                    key={chunk.strip_id || idx}
-                    className="rounded-lg border border-border/70 bg-card/60 p-2 text-left shadow-2xs"
-                  >
-                    <div className="flex items-center justify-between gap-2 text-[11px]">
-                      <span className="font-semibold text-foreground/90 flex items-center gap-1 truncate">
-                        {isWeb ? (
-                          <Globe className="h-3 w-3 text-blue-500 shrink-0" />
-                        ) : (
-                          <Scale className="h-3 w-3 text-primary shrink-0" />
-                        )}
-                        <span className="truncate">{title}</span>
-                      </span>
-                      {scorePercent != null && (
-                        <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded shrink-0">
-                          {scorePercent}% phù hợp
-                        </span>
-                      )}
-                    </div>
-                    {chunk.text && (
-                      <div className="mt-1 text-[11px] text-muted-foreground/90 leading-relaxed font-mono bg-muted/30 p-1.5 rounded border border-border/40 line-clamp-2">
-                        &ldquo;{chunk.text}&rdquo;
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      ),
-    });
+  if (lower.includes("nghỉ phép") || lower.includes("nghỉ hàng năm")) {
+    return [
+      "Số ngày nghỉ phép năm tăng theo thâm niên làm việc ra sao?",
+      "Tiền lương những ngày chưa nghỉ hết phép năm được tính thế nào?",
+    ];
   }
-
-  // Step 3: CRAG evaluation (if action exists)
-  if (isRag && action) {
-    items.push({
-      id: `${msg.id}-crag`,
-      type: "tool",
-      label: `Đánh giá CRAG: Nhánh ${action}`,
-      content: action === "CORRECT"
-        ? "Bằng chứng pháp lý đầy đủ, thực hiện tinh lọc tri thức (Knowledge Refinement)."
-        : action === "AMBIGUOUS"
-        ? "Bằng chứng một phần, kết hợp tìm kiếm mở rộng cổng thông tin chính thống."
-        : "Bằng chứng nội bộ không đủ, kích hoạt tìm kiếm mạng chính thống.",
-      status: "complete",
-      meta: action,
-    });
+  if (lower.includes("hợp đồng lao động") || lower.includes("sa thải")) {
+    return [
+      "Thời hạn báo trước khi đơn phương chấm dứt hợp đồng?",
+      "Điều kiện được hưởng trợ cấp thôi việc?",
+    ];
   }
-
-  // Step 4: Citation validator
-  if (isRag && msg.citationReport && msg.citationReport.valid_citations?.length > 0) {
-    const validCount = msg.citationReport.valid_citations.length;
-    const accuracy = Math.round((msg.citationReport.citation_accuracy ?? 1) * 100);
-    items.push({
-      id: `${msg.id}-cite`,
-      type: "step",
-      label: "Kiểm định trích dẫn",
-      content: `${validCount} căn cứ đối chiếu hợp lệ qua Citation Validator.`,
-      status: "complete",
-      meta: `${accuracy}% chính xác`,
-    });
-  }
-
-  return items;
+  return [
+    "Văn bản pháp luật nào quy định chi tiết vấn đề này?",
+    "Doanh nghiệp cần lưu ý những thủ tục gì để tránh bị phạt?",
+  ];
 }
 
-export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, liveStage }) => {
+export const MessageList: React.FC<MessageListProps> = ({
+  messages,
+  isLoading,
+  liveStage,
+  onFollowUp,
+  onRetry,
+}) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const handleCopy = (id: string, text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const getStageLabel = (stage: number | null) => {
+    switch (stage) {
+      case 0:
+        return "Đang suy nghĩ & phân tích yêu cầu...";
+      case 1:
+        return "Đang tra cứu kho tri thức pháp lý...";
+      case 2:
+        return "Đang đánh giá căn cứ & cổng pháp luật...";
+      case 3:
+        return "Đang hoàn thiện câu trả lời...";
+      default:
+        return "Đang xử lý...";
+    }
   };
 
   return (
@@ -165,13 +202,17 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, l
       contentClassName="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6"
     >
       {messages.map((msg) => {
-        const sources = toCitationItems(msg.trace?.evidence);
-        const activityItems = toActivityItems(msg);
+        const contextChunks = toContextChunks(msg.trace?.evidence);
+        const toolSteps = toToolSteps(msg);
+        const thinkingRows = toThinkingRows(msg);
+        const followUps = getFollowUpsForMessage(msg.content);
 
         return (
           <div
             key={msg.id}
-            className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
+            className={`flex flex-col ${
+              msg.role === "user" ? "items-end" : "items-start"
+            }`}
           >
             {msg.role === "user" ? (
               <div className="group flex flex-col items-end gap-1 max-w-[80%] sm:max-w-[70%]">
@@ -180,7 +221,10 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, l
                 </div>
                 <div className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground/60 opacity-0 group-hover:opacity-100 transition-opacity">
                   <span>
-                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {new Date(msg.timestamp).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </span>
                   <button
                     type="button"
@@ -198,31 +242,78 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, l
               </div>
             ) : (
               <div className="flex w-full items-start gap-3.5 group">
-                <div className="min-w-0 flex-1">
-                  <StreamingResponse
-                    status={msg.isStreaming ? "streaming" : "complete"}
-                    copyText={msg.content}
-                    sources={sources}
-                  >
-                    {/* Agent Activity Timeline (beui.dev/components/agents/agent-activity) */}
-                    {(activityItems.length > 0 || msg.isStreaming) && (
-                      <AgentActivity
-                        items={activityItems}
-                        status={msg.isStreaming ? "working" : "complete"}
-                        duration={(msg.durationMs || 0) / 1000}
-                        defaultOpen={false}
-                        collapseOnComplete={true}
-                      />
-                    )}
+                <div className="min-w-0 flex-1 flex flex-col gap-3">
+                  {/* 02 Thinking: Expandable traces — steps, reasoning, search */}
+                  <ThinkingState
+                    variant={
+                      (msg.trace?.evidence || []).some((e) => e.source_url)
+                        ? "Search"
+                        : "Steps"
+                    }
+                    isWorking={msg.isStreaming}
+                    rows={thinkingRows}
+                    duration={
+                      msg.durationMs ? msg.durationMs / 1000 : undefined
+                    }
+                    query={
+                      (msg.trace?.evidence || []).find((e) => e.source_url)
+                        ? "Cổng thông tin pháp luật chính thống"
+                        : undefined
+                    }
+                  />
 
-                    {/* Markdown Answer with inline citations (beui.dev/components/agents/citations) */}
+                  {/* 04 Tool Chips: compact chips showing tool calls */}
+                  {toolSteps.length > 0 && (
+                    <ToolChips
+                      steps={toolSteps}
+                      labels={{
+                        header: `${toolSteps.length} công cụ tra cứu đã thực thi`,
+                      }}
+                    />
+                  )}
+
+                  {/* 06 Selection Actions wrapped around the Markdown message */}
+                  <SelectionActions
+                    onAction={(actionId, selectedText) => {
+                      if (actionId === "handoff" && onFollowUp) {
+                        onFollowUp(`Giải thích thêm về quy định: "${selectedText}"`);
+                      }
+                    }}
+                  >
                     <MarkdownMessage
                       content={msg.content}
                       evidence={msg.trace?.evidence}
                       claims={msg.claims}
                       isStreaming={msg.isStreaming}
                     />
-                  </StreamingResponse>
+                  </SelectionActions>
+
+                  {/* 05 Context Cards: Retrieved knowledge chunks with their sources */}
+                  {contextChunks.length > 0 && (
+                    <div className="mt-2">
+                      <ContextCards
+                        chunks={contextChunks}
+                        labels={{
+                          header: "Căn cứ pháp lý viện dẫn",
+                          count: `${contextChunks.length} căn cứ`,
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* 03 Streaming Text Actions Bar (Copy, Retry, Thumbs Up/Down, Follow-ups) */}
+                  <StreamingText
+                    isStreaming={msg.isStreaming}
+                    onCopy={() => handleCopy(msg.id, msg.content)}
+                    onRetry={onRetry}
+                    onFollowUp={onFollowUp}
+                    followUps={followUps}
+                    sources={contextChunks.map((c) => ({
+                      name: c.title,
+                      domain: c.source,
+                      href: c.sourceUrl,
+                    }))}
+                  />
                 </div>
               </div>
             )}
@@ -230,38 +321,14 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, l
         );
       })}
 
-      {/* Streaming state before first token arrives */}
+      {/* 01 Loading State: Pixel-grid loader with shimmer and live elapsed time */}
       {isLoading && liveStage !== null && (
-        <div className="flex w-full items-start gap-3.5">
-          <div className="min-w-0 flex-1">
-            <AgentActivity
-              items={[
-                {
-                  id: "live-step",
-                  type: "step",
-                  label:
-                    liveStage === 0
-                      ? "Đang suy nghĩ"
-                      : liveStage === 1
-                      ? "Tra cứu kho tri thức pháp lý"
-                      : liveStage === 2
-                      ? "Tổng hợp & đánh giá căn cứ"
-                      : "Hoàn thiện câu trả lời",
-                  status: "active",
-                },
-              ]}
-              status="working"
-              activeLabel={
-                liveStage === 0
-                  ? "Đang suy nghĩ…"
-                  : liveStage === 1
-                  ? "Đang tra cứu kho tri thức…"
-                  : liveStage === 2
-                  ? "Đang đánh giá căn cứ…"
-                  : "Đang hoàn thiện câu trả lời…"
-              }
-            />
-          </div>
+        <div className="flex w-full items-start gap-3.5 pt-1">
+          <LoadingState
+            variant="Drive"
+            label={getStageLabel(liveStage)}
+            className="shadow-sm"
+          />
         </div>
       )}
     </MessageScroller>

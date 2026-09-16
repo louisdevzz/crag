@@ -33,6 +33,9 @@ export interface EvidenceItem {
   score?: number;
   source_priority?: number;
   retrieval_source?: string;
+  source_url?: string;
+  source_domain?: string;
+  metadata?: Record<string, any>;
 }
 
 export interface ChatResponse {

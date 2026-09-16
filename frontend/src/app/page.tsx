@@ -285,7 +285,12 @@ export default function HomePage() {
             <WelcomeHero onSend={handleSendMessage} {...composerProps} />
           ) : (
             <>
-              <MessageList messages={messages} isLoading={isLoading} liveStage={liveStage} />
+              <MessageList
+                messages={messages}
+                isLoading={isLoading}
+                liveStage={liveStage}
+                onFollowUp={handleSendMessage}
+              />
               <div className="mx-auto w-full max-w-3xl flex-shrink-0 px-4 pb-4">
                 <PromptComposer onSend={handleSendMessage} {...composerProps} />
                 <p className="mt-2 text-center text-[11px] text-muted-foreground">
