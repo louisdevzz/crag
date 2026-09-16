@@ -45,12 +45,12 @@ export interface AgentActivityProps {
 
 function formatDuration(duration: number): string {
   const seconds = Math.max(0, Math.round(duration));
-  if (seconds < 60) return `${seconds}s`;
+  if (seconds === 0) return "";
+  if (seconds < 60) return `${seconds} giây`;
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds % 60;
-  return remainder === 0 ? `${minutes}m` : `${minutes}m ${remainder}s`;
+  return remainder === 0 ? `${minutes} phút` : `${minutes} phút ${remainder} giây`;
 }
-
 export function AgentActivity({
   items,
   status = "working",
@@ -59,7 +59,7 @@ export function AgentActivity({
   defaultOpen = false,
   onOpenChange,
   collapseOnComplete = true,
-  activeLabel = "Đang suy nghĩ & phân tích…",
+  activeLabel = "Đang suy nghĩ…",
   summary,
   maxHeight = 220,
   className,
@@ -97,13 +97,20 @@ export function AgentActivity({
     setOpen(!currentOpen);
   };
 
+  const durText = formatDuration(duration);
   const completedSummary =
     summary ?? (
       <>
-        Thought for{" "}
-        <span className="font-mono tabular-nums font-semibold">
-          {formatDuration(duration)}
-        </span>
+        <span>Đã suy nghĩ</span>
+        {durText ? (
+          <>
+            {" "}
+            <span>trong</span>{" "}
+            <span className="font-mono tabular-nums font-semibold">
+              {durText}
+            </span>
+          </>
+        ) : null}
       </>
     );
 

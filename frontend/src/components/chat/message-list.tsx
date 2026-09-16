@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Check, Copy, Sparkles } from "lucide-react";
+import { Check, Copy, Globe, Scale, Sparkles } from "lucide-react";
 import { EvidenceItem, Message } from "@/lib/types";
 import { MarkdownMessage } from "./markdown-message";
 import { MessageScroller } from "./message-scroller";
@@ -57,16 +57,59 @@ function toActivityItems(msg: Message): AgentActivityItem[] {
 
   // Step 2: Search (if RAG)
   if (isRag) {
-    const evCount = msg.trace?.evidence?.length || 0;
+    const evidenceList = msg.trace?.evidence || [];
     items.push({
       id: `${msg.id}-search`,
       type: "search",
-      label: "Tra cứu kho tri thức",
-      content: evCount > 0
-        ? `Truy hồi ${evCount} bằng chứng từ cơ sở dữ liệu nội bộ (Hybrid Retrieval + Reranker).`
-        : "Truy hồi văn bản quy phạm pháp luật và điều khoản tương ứng.",
+      label: "Tra cứu & Bóc tách phân đoạn (Chunking Retrieval)",
       status: "complete",
-      meta: evCount > 0 ? `${evCount} căn cứ` : undefined,
+      meta: evidenceList.length > 0 ? `${evidenceList.length} phân đoạn` : undefined,
+      content: (
+        <div className="mt-1 space-y-2">
+          <p className="text-[11px] text-muted-foreground">
+            {evidenceList.length > 0
+              ? `Đã bóc tách và nạp ${evidenceList.length} phân đoạn (chunks) từ kho quy phạm pháp luật:`
+              : "Truy hồi các điều khoản quy phạm tương ứng."}
+          </p>
+          {evidenceList.length > 0 && (
+            <div className="space-y-1.5 pt-0.5">
+              {evidenceList.slice(0, 5).map((chunk, idx) => {
+                const title =
+                  chunk.heading || chunk.document_title || chunk.locator || `Phân đoạn #${idx + 1}`;
+                const scorePercent = chunk.score != null ? Math.round(chunk.score * 100) : null;
+                const isWeb = chunk.retrieval_source === "web" || chunk.strip_id?.startsWith("WEB_");
+                return (
+                  <div
+                    key={chunk.strip_id || idx}
+                    className="rounded-lg border border-border/70 bg-card/60 p-2 text-left shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between gap-2 text-[11px]">
+                      <span className="font-semibold text-foreground/90 flex items-center gap-1 truncate">
+                        {isWeb ? (
+                          <Globe className="h-3 w-3 text-blue-500 shrink-0" />
+                        ) : (
+                          <Scale className="h-3 w-3 text-primary shrink-0" />
+                        )}
+                        <span className="truncate">{title}</span>
+                      </span>
+                      {scorePercent != null && (
+                        <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded shrink-0">
+                          {scorePercent}% phù hợp
+                        </span>
+                      )}
+                    </div>
+                    {chunk.text && (
+                      <div className="mt-1 text-[11px] text-muted-foreground/90 leading-relaxed font-mono bg-muted/30 p-1.5 rounded border border-border/40 line-clamp-2">
+                        &ldquo;{chunk.text}&rdquo;
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ),
     });
   }
 

@@ -135,6 +135,8 @@ def chat_endpoint(req: ChatRequest) -> ChatResponse:
         client_id, session_id, req.query, answer_text,
         route=route, crag_action=action,
         source_type=evidence[0].get("retrieval_source", "internal") if evidence else "none",
+        evidence=evidence,
+        citation_report=citation_report,
     )
     log.info("=== [TURN DONE] route=%s crag_action=%s evidence=%d answer_chars=%d ===", route, action, len(evidence), len(answer_text))
 
@@ -245,6 +247,8 @@ async def chat_stream_endpoint(req: ChatRequest) -> StreamingResponse:
             client_id, session_id, req.query, answer_text,
             route=route, crag_action=action,
             source_type=evidence[0].get("retrieval_source", "internal") if evidence else "none",
+            evidence=evidence,
+            citation_report=citation_report,
         )
         log.info("=== [TURN DONE] (streaming) route=%s crag_action=%s evidence=%d answer_chars=%d ===", route, action, len(evidence), len(answer_text))
 

@@ -60,6 +60,8 @@ def persist_turn(
     route: Optional[str] = None,
     crag_action: Optional[str] = None,
     source_type: Optional[str] = None,
+    evidence: Optional[List[Dict[str, Any]]] = None,
+    citation_report: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Write both sides of one turn to the canonical `messages` table."""
     store = get_memory_store()
@@ -67,8 +69,8 @@ def persist_turn(
     store.log_message(
         client_id, session_id, role="assistant", content=answer_text,
         route=route, crag_action=crag_action, source_type=source_type,
+        evidence=evidence, citation_report=citation_report,
     )
-
 
 def invoke_crag(
     query: str,
@@ -96,5 +98,7 @@ def invoke_crag(
         resolved_client_id, resolved_session_id, query, answer_text,
         route=route, crag_action=action,
         source_type=evidence[0].get("retrieval_source", "internal") if evidence else "none",
+        evidence=evidence,
+        citation_report=result.get("citation_report"),
     )
     return result

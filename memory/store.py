@@ -12,6 +12,7 @@ Three tables (see schema.sql):
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 import uuid
 from pathlib import Path
@@ -31,8 +32,21 @@ def get_connection(db_path: Path | str = DB_PATH) -> sqlite3.Connection:
     con.execute("PRAGMA foreign_keys = ON")
     con.execute("PRAGMA journal_mode = WAL")
     con.execute("PRAGMA busy_timeout = 5000")
+    _ensure_message_columns(con)
     return con
 
+
+def _ensure_message_columns(con: sqlite3.Connection) -> None:
+    try:
+        cur = con.cursor()
+        cols = [r["name"] for r in cur.execute("PRAGMA table_info(messages)").fetchall()]
+        if cols and "evidence_json" not in cols:
+            cur.execute("ALTER TABLE messages ADD COLUMN evidence_json TEXT")
+        if cols and "citation_report_json" not in cols:
+            cur.execute("ALTER TABLE messages ADD COLUMN citation_report_json TEXT")
+        con.commit()
+    except Exception:
+        pass
 
 class MemoryStore:
     """Manages Client Profiles, Session Tracking, Conversational History, and Semantic Memory."""
@@ -87,20 +101,23 @@ class MemoryStore:
         route: Optional[str] = None,
         crag_action: Optional[str] = None,
         source_type: Optional[str] = None,
+        evidence: Optional[List[Dict[str, Any]]] = None,
+        citation_report: Optional[Dict[str, Any]] = None,
     ) -> int:
         """Persist one conversational turn message (Context Manager's source of truth)."""
+        evidence_json = json.dumps(evidence, ensure_ascii=False) if evidence else None
+        citation_report_json = json.dumps(citation_report, ensure_ascii=False) if citation_report else None
         with get_connection(self.db_path) as con:
             cur = con.cursor()
             cur.execute(
                 """
-                INSERT INTO messages (session_id, client_id, role, content, route, crag_action, source_type)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO messages (session_id, client_id, role, content, route, crag_action, source_type, evidence_json, citation_report_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (session_id, client_id, role, content, route, crag_action, source_type),
+                (session_id, client_id, role, content, route, crag_action, source_type, evidence_json, citation_report_json),
             )
             con.commit()
             return cur.lastrowid
-
     def get_recent_messages(self, session_id: str, limit: int = 8) -> List[Dict[str, Any]]:
         """Last `limit` messages of a session in chronological order — what the Context
         Manager feeds into the answer-generation prompt as `conversation_history`."""
@@ -123,20 +140,15 @@ class MemoryStore:
         frontend chat sidebar already relies on (`question`/`answer` pairs)."""
         with get_connection(self.db_path) as con:
             cur = con.cursor()
+            cols = "id, session_id, role, content, route, crag_action, created_at, evidence_json, citation_report_json"
             if session_id:
                 cur.execute(
-                    """
-                    SELECT id, session_id, role, content, route, crag_action, created_at
-                    FROM messages WHERE client_id = ? AND session_id = ? ORDER BY id ASC
-                    """,
+                    f"SELECT {cols} FROM messages WHERE client_id = ? AND session_id = ? ORDER BY id ASC",
                     (client_id, session_id),
                 )
             else:
                 cur.execute(
-                    """
-                    SELECT id, session_id, role, content, route, crag_action, created_at
-                    FROM messages WHERE client_id = ? ORDER BY id ASC
-                    """,
+                    f"SELECT {cols} FROM messages WHERE client_id = ? ORDER BY id ASC",
                     (client_id,),
                 )
             rows = [dict(r) for r in cur.fetchall()]
@@ -147,6 +159,19 @@ class MemoryStore:
             if row["role"] == "user":
                 pending = row
             elif row["role"] == "assistant" and pending is not None:
+                ev_list = []
+                if row.get("evidence_json"):
+                    try:
+                        ev_list = json.loads(row["evidence_json"])
+                    except Exception:
+                        ev_list = []
+                cite_rep = None
+                if row.get("citation_report_json"):
+                    try:
+                        cite_rep = json.loads(row["citation_report_json"])
+                    except Exception:
+                        cite_rep = None
+
                 items.append({
                     "id": row["id"],
                     "session_id": row["session_id"],
@@ -155,6 +180,8 @@ class MemoryStore:
                     "route": row["route"],
                     "crag_action": row["crag_action"],
                     "created_at": row["created_at"],
+                    "evidence": ev_list,
+                    "citation_report": cite_rep,
                 })
                 pending = None
         items.reverse()  # most recent first, matching the old query_logs ORDER BY id DESC

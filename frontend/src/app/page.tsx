@@ -65,8 +65,42 @@ export default function HomePage() {
     if (settings?.current?.model) {
       setModelLabel(settings.current.model);
     }
-  };
 
+    // Restore saved session or URL session query
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const targetSid =
+        params.get("session_id") || localStorage.getItem("legal_crag_session_id");
+      if (targetSid) {
+        const turns = await fetchHistory(cid, { sessionId: targetSid, limit: 200 });
+        if (turns.length > 0) {
+          const reconstructed: Message[] = [];
+          for (const turn of turns) {
+            reconstructed.push({
+              id: `usr_${turn.id}`,
+              role: "user",
+              content: turn.question,
+              timestamp: turn.created_at,
+            });
+            reconstructed.push({
+              id: `ast_${turn.id}`,
+              role: "assistant",
+              content: turn.answer,
+              timestamp: turn.created_at,
+              citationReport: turn.citation_report,
+              trace: {
+                route: turn.route,
+                cragAction: turn.crag_action,
+                evidence: turn.evidence || [],
+              },
+            });
+          }
+          setSessionId(targetSid);
+          setMessages(reconstructed);
+        }
+      }
+    }
+  };
   const refreshMemoryAndHistory = async () => {
     if (!clientId) return;
     const [memData, hist] = await Promise.all([
@@ -81,6 +115,9 @@ export default function HomePage() {
 
   const handleSendMessage = async (query: string) => {
     if (!query.trim() || isLoading) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("legal_crag_session_id", sessionId);
+    }
 
     const userMessage: Message = {
       id: "usr_" + Date.now(),
@@ -165,7 +202,11 @@ export default function HomePage() {
   };
 
   const handleNewChat = () => {
-    setSessionId("session_" + Math.random().toString(36).substring(2, 11));
+    const newSid = "session_" + Math.random().toString(36).substring(2, 11);
+    setSessionId(newSid);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("legal_crag_session_id", newSid);
+    }
     setMessages([]);
   };
 
@@ -187,11 +228,19 @@ export default function HomePage() {
         role: "assistant",
         content: turn.answer,
         timestamp: turn.created_at,
-        trace: { route: turn.route, cragAction: turn.crag_action, evidence: [] },
+        citationReport: turn.citation_report,
+        trace: {
+          route: turn.route,
+          cragAction: turn.crag_action,
+          evidence: turn.evidence || [],
+        },
       });
     }
 
     setSessionId(targetSessionId);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("legal_crag_session_id", targetSessionId);
+    }
     setMessages(reconstructed);
   };
 

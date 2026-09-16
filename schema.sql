@@ -107,6 +107,8 @@ CREATE TABLE IF NOT EXISTS messages (
     route TEXT,
     crag_action TEXT,
     source_type TEXT,
+    evidence_json TEXT,
+    citation_report_json TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
     FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE CASCADE

@@ -105,6 +105,8 @@ export interface HistoryItem {
   route: string;
   crag_action: string;
   created_at: string;
+  evidence?: EvidenceItem[];
+  citation_report?: CitationReport;
 }
 
 export interface AdminDocumentSummary {
