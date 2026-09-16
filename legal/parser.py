@@ -184,6 +184,15 @@ def parse_legal_document(
     # section heading — generic on the leading "(", not on its wording, so it
     # never gets glued onto a heading's title (see the title-fill step below).
     in_paren_gap = False
+    # "Phần mở đầu" — the official opening section every normative document
+    # has before its first Điều (quốc hiệu/tiêu ngữ, issuing body, document
+    # number, and — the substantive part — its "Căn cứ ..." legal-basis
+    # recitals). Captured as its own provision instead of being silently
+    # dropped like everything else that isn't a Điều/Khoản/Điểm/annex row.
+    preamble_lines: List[str] = []
+    preamble_page_start: Optional[int] = None
+    preamble_page_end: Optional[int] = None
+    in_preamble = True
 
     def flush_article():
         nonlocal current_article_lines, current_article_page_start, current_article_page_end
@@ -328,6 +337,7 @@ def parse_legal_document(
             current_article_page_start = page_num
             current_article_page_end = page_num
             seen_first_article = True
+            in_preamble = False
             in_paren_gap = False
             continue
 
@@ -341,12 +351,28 @@ def parse_legal_document(
             current_article = ""
             current_article_title = ""
             in_paren_gap = False
+            in_preamble = False
             if current_chapter.lower().startswith(("chương", "phần")):
                 # A real Chương/Phần boundary always outranks an annex table —
                 # any table in progress has ended. Mục/Tiểu mục are left
                 # alone since they commonly subdivide an annex's own rows
                 # (e.g. "Mục I" / "Mục II" inside a "Danh mục ..." annex).
                 in_annex = False
+            continue
+
+        if in_preamble:
+            # Everything before the document's first Điều/Chương/Mục/Phần —
+            # quốc hiệu/tiêu ngữ, issuing body, document number, and its
+            # "Căn cứ ..." legal-basis recitals — captured as one provision
+            # below instead of being silently dropped. A bare number this
+            # early is always a running page number (no real "Phần mở đầu"
+            # content is ever just digits on their own line), not content.
+            if not STT_ITEM_PATTERN.match(stripped):
+                preamble_lines.append(stripped)
+                if page_num is not None:
+                    if preamble_page_start is None:
+                        preamble_page_start = page_num
+                    preamble_page_end = page_num
             continue
 
         if in_annex:
@@ -403,6 +429,35 @@ def parse_legal_document(
 
     # Flush last article
     flush_article()
+
+    if preamble_lines:
+        preamble_text = "\n".join(preamble_lines).strip()
+        prov_id = make_unique_id(f"{doc_id}_PREAMBLE")
+        provisions.insert(0, {
+            "id": prov_id,
+            "document_id": doc_id,
+            "document_number": doc_number,
+            "chapter": "",
+            "article": "",
+            "clause": "",
+            "point": "",
+            "heading": "Căn cứ ban hành",
+            "text": preamble_text,
+            "locator": prov_id,
+            "provenance": f"{doc_title} > Căn cứ ban hành",
+            "page_start": preamble_page_start,
+            "page_end": preamble_page_end,
+            "metadata": {
+                "document_id": doc_id,
+                "document_number": doc_number,
+                "document_title": doc_title,
+                "chapter": "",
+                "article": "",
+                "clause": "",
+                "locator": prov_id,
+            }
+        })
+
     return provisions
 
 
