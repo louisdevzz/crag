@@ -54,7 +54,7 @@ Các thư viện chính bao gồm:
 - **Tầng LLM:** `langchain-openai`, `langchain-groq`, `langchain-ollama`
 - **Truy hồi & Vector:** `chromadb`, `langchain-chroma`, `rank-bm25`
 - **Xử lý File & PDF:** `pymupdf`, `pillow`, `beautifulsoup4`, `pydantic`
-- **API & Web:** `fastapi`, `uvicorn[standard]`, `duckduckgo-search`, `requests`
+- **API & Web:** `fastapi`, `uvicorn[standard]`, `requests` (TinyFish Search API cho `controlled_web_search`)
 
 ---
 

@@ -73,7 +73,7 @@ Hệ thống áp dụng kiến trúc 3 tầng tách biệt (*Separation of Conce
 | **Xử lý PDF** | `pymupdf` (PyMuPDF) | `>=1.28.2` | Trích xuất văn bản số hóa tốc độ cao và render trang scan ảnh. |
 | **Xử lý Ảnh** | `pillow` (PIL) | `>=12.3.0` | Xử lý ảnh raster, kiểm soát kênh alpha và xuất ảnh nền trắng đục 100%. |
 | **Cào Dữ liệu Web** | `beautifulsoup4`, `requests` | `>=4.12` | Bóc tách HTML, loại bỏ scripts/styles, lấy nội dung pháp luật sạch. |
-| **Tìm kiếm Web Ngoài** | `duckduckgo-search` (`ddgs`) | `>=8.1.1` | Thực thi tìm kiếm web theo tên miền công quyền cho phép. |
+| **Tìm kiếm Web Ngoài** | TinyFish Search API (`requests`) | — | Thực thi tìm kiếm web theo tên miền công quyền cho phép, lọc `include_domains` phía server. |
 | **Giao diện Người dùng** | Next.js (App Router), React | `14.2.24` / `18.3` | Single Page Application với TypeScript, Tailwind CSS, Lucide icons. |
 | **CSS Framework** | `tailwindcss`, `postcss` | `3.4.19` | Hệ thống styling tiện ích với các badge màu sắc CRAG chuyên dụng. |
 

@@ -45,6 +45,15 @@ _FORMAT_RETRY_NOTICE = (
 )
 
 
+_FINAL_ROUND_NOTICE = (
+    "Bạn đã dùng hết số lượt gọi công cụ cho phép trong lượt hỏi này. Hãy đưa ra câu trả lời CUỐI CÙNG "
+    "ngay bây giờ: nếu có bằng chứng (evidence) đã thu thập được ở các tool_call phía trên, hãy tổng hợp "
+    "và trích dẫn mã nguồn [source_id] tương ứng; nếu hoàn toàn không có bằng chứng phù hợp, trả lời đúng "
+    "nguyên văn 'Chưa đủ căn cứ pháp lý để kết luận.' TUYỆT ĐỐI không chào hỏi, không hỏi lại, không nói "
+    "cần tra cứu thêm."
+)
+
+
 _LEAKED_FUNCTION_RE = re.compile(r"<function=([\w.\-]+)>([\s\S]*?)</function>", re.IGNORECASE)
 _LEAKED_PARAM_RE = re.compile(r"<parameter=([\w.\-]+)>([\s\S]*?)</parameter>", re.IGNORECASE)
 
@@ -173,6 +182,14 @@ def agent_node(state: AgentState) -> Dict[str, Any]:
     allow_tools = tool_call_rounds < MAX_TOOL_ROUNDS
     tools_schema = get_tool_registry().to_openai_tools() if allow_tools else []
 
+    # Round cap reached: tools are no longer offered, so nudge the model to actually
+    # synthesize from whatever evidence it already gathered instead of free-generating
+    # an unrelated greeting/non-answer (observed behavior without this reminder).
+    final_round_reminder: Optional[SystemMessage] = None
+    if not allow_tools:
+        final_round_reminder = SystemMessage(content=_FINAL_ROUND_NOTICE)
+        messages = messages + [final_round_reminder]
+
     bound = llm
     if tools_schema:
         try:
@@ -202,7 +219,29 @@ def agent_node(state: AgentState) -> Dict[str, Any]:
             ai_msg = AIMessage(content="", tool_calls=leaked_calls)
             return {"messages": [ai_msg]}
 
-    updates: Dict[str, Any] = {"messages": [ai_msg]}
+        # Deterministic self-correction guard: the model is free to decide *when* to call
+        # controlled_web_search, but it is not free to skip it entirely after crag_search
+        # itself reported the internal evidence AMBIGUOUS/INCORRECT (or failed outright) —
+        # that is exactly the CRAG "corrective" step, and leaving it purely to the model's
+        # judgment produced ungrounded "chưa đủ căn cứ pháp lý" abstentions in practice.
+        tool_trace = state.get("tool_trace") or []
+        web_search_tried = any(t.get("tool") == "controlled_web_search" for t in tool_trace)
+        crag_calls = [t for t in tool_trace if t.get("tool") == "crag_search"]
+        last_crag_action = crag_calls[-1].get("crag_action") if crag_calls else None
+        if crag_calls and not web_search_tried and last_crag_action != "CORRECT":
+            log.warning(
+                "[AGENT] internal evidence insufficient (crag_action=%s) and model answered "
+                "without trying controlled_web_search -> forcing a web-search round",
+                last_crag_action,
+            )
+            forced_call = {
+                "name": "controlled_web_search",
+                "args": {"query": state.get("query", "")},
+                "id": f"forced_web_search_{uuid.uuid4().hex[:8]}",
+            }
+            return {"messages": [AIMessage(content="", tool_calls=[forced_call])]}
+
+    updates: Dict[str, Any] = {"messages": ([final_round_reminder] if final_round_reminder else []) + [ai_msg]}
     if not ai_msg.tool_calls:
         generation = _parse_generation_flexible(ai_msg.content, state.get("evidence", []))
         updates["generation"] = generation
@@ -216,6 +255,7 @@ def tool_node(state: AgentState) -> Dict[str, Any]:
     last = messages[-1]
     registry = get_tool_registry()
     writer = get_stream_writer()
+    prior_trace = state.get("tool_trace") or []
 
     tool_messages: List[ToolMessage] = []
     new_evidence: List[Dict[str, Any]] = []
@@ -225,6 +265,22 @@ def tool_node(state: AgentState) -> Dict[str, Any]:
         name = call["name"]
         args = call.get("args", {}) or {}
         call_id = call["id"]
+
+        # An identical (name, args) call already succeeded earlier this turn: skip
+        # re-executing it (spares a network round trip, e.g. a slow web search) and
+        # push the model to reuse the evidence it already has instead of stalling
+        # out the MAX_TOOL_ROUNDS budget on repeats.
+        if any(t.get("tool") == name and t.get("args") == args and t.get("success") for t in prior_trace):
+            log.info("[TOOL] %s args=%s -> SKIPPED (duplicate of an already-executed call this turn)", name, args)
+            tool_messages.append(ToolMessage(
+                content=json.dumps({
+                    "note": "Kết quả trùng lặp với lần gọi trước đó trong lượt này — hãy dùng bằng "
+                            "chứng đã thu thập được ở trên để trả lời, không lặp lại truy vấn này nữa.",
+                }, ensure_ascii=False),
+                tool_call_id=call_id, name=name,
+            ))
+            continue
+
         writer({"tool_start": {"tool": name, "args": args}})
 
         result = registry.execute(name, **args)

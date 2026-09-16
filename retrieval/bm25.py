@@ -7,13 +7,22 @@ from typing import Any, Dict, List, Optional
 
 from config import PROCESSED_DATA_DIR, TOP_K_BM25
 from ingestion.text import tokenize_vi
+from logging_config import get_logger
+
+log = get_logger(__name__)
 
 
 _BM25_CACHE: Optional[Dict[str, Any]] = None
 
 
 def load_bm25_index(index_path: Path | str = PROCESSED_DATA_DIR / "bm25_index.pkl") -> Dict[str, Any]:
-    """Load serialized BM25 index and provision catalog."""
+    """Load serialized BM25 index and provision catalog.
+
+    No document has been ingested yet (or the index has not been rebuilt since):
+    degrade to an empty corpus instead of raising, so `crag_search` can still
+    complete and hand off to `controlled_web_search` via a normal AMBIGUOUS/
+    INCORRECT decision rather than crashing the whole tool call.
+    """
     global _BM25_CACHE
     index_path = Path(index_path)
 
@@ -21,7 +30,11 @@ def load_bm25_index(index_path: Path | str = PROCESSED_DATA_DIR / "bm25_index.pk
         return _BM25_CACHE
 
     if not index_path.exists():
-        raise FileNotFoundError(f"BM25 index not found at {index_path}. Upload a document via the Admin panel first.")
+        log.warning(
+            "BM25 index not found at %s -> treating as empty corpus (ingest a document "
+            "via the Admin panel to enable lexical search)", index_path,
+        )
+        return {"bm25": None, "chunks": [], "count": 0}
 
     with open(index_path, "rb") as f:
         _BM25_CACHE = pickle.load(f)
@@ -51,6 +64,8 @@ def bm25_retrieve(
     index_data = load_bm25_index(index_path)
     bm25 = index_data["bm25"]
     chunks = index_data.get("chunks", index_data.get("provisions", []))
+    if bm25 is None or not chunks:
+        return []
 
     tokenized_query = tokenize_vi(query)
     if not tokenized_query:

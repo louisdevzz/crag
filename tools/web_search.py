@@ -2,11 +2,17 @@
 
 Modeled after Hermes Agent and OpenClaw web search tools.
 Enforces domain allow-list, cleans HTML chrome, and packages into standardized evidence strips.
+
+Backed by the TinyFish Search API (https://docs.tinyfish.ai/search-api) rather than the
+`duckduckgo_search`/`ddgs` package: the DDG HTML backend proved unreliable in this
+deployment (silently returning zero results, even for unrestricted queries, with no
+raised exception to react to). TinyFish exposes `include_domains` natively, so the
+official-domain restriction is applied server-side instead of via a `site:` OR-query hack.
 """
 from __future__ import annotations
 
+import os
 import re
-import warnings
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlparse
 
@@ -15,10 +21,12 @@ from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field
 
 from config import OFFICIAL_DOMAINS
+from logging_config import get_logger
 from tools.base import BaseLegalTool
 
-# Suppress duckduckgo rename warnings
-warnings.filterwarnings("ignore", category=RuntimeWarning, module="duckduckgo_search")
+log = get_logger(__name__)
+
+TINYFISH_SEARCH_URL = "https://api.search.tinyfish.ai"
 
 
 class ControlledWebSearchInput(BaseModel):
@@ -92,31 +100,43 @@ def search_official_web(
     allowed_domains: Optional[Set[str]] = None,
     timeout: int = 10,
 ) -> List[Dict[str, Any]]:
-    """Execute controlled web search restricted to official government legal domains."""
+    """Execute controlled web search restricted to official government legal domains,
+    via the TinyFish Search API (`include_domains` applies the restriction server-side)."""
     domains = allowed_domains or OFFICIAL_DOMAINS
     candidates: List[Dict[str, Any]] = []
 
+    api_key = os.getenv("TINYFISH_API_KEY")
+    if not api_key:
+        log.warning("[WEB_SEARCH] TINYFISH_API_KEY not configured -> skipping web search")
+        return candidates
+
     try:
-        from duckduckgo_search import DDGS
-
-        ddgs = DDGS()
-        domain_filter = " OR ".join([f"site:{d}" for d in list(domains)[:3]])
-        full_query = f"{query} ({domain_filter})"
-
-        raw_results = list(ddgs.text(full_query, max_results=max_results * 2))
+        resp = requests.get(
+            TINYFISH_SEARCH_URL,
+            params={
+                "query": query,
+                "include_domains": ",".join(sorted(domains)),
+                "location": "VN",
+                "language": "vi",
+            },
+            headers={"X-API-Key": api_key},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        raw_results = resp.json().get("results", [])
         for r in raw_results:
-            url = r.get("href") or r.get("link") or ""
+            url = r.get("url", "")
             if is_allowed_source(url, domains):
                 candidates.append({
                     "title": r.get("title", ""),
                     "url": url,
-                    "snippet": r.get("body", ""),
+                    "snippet": r.get("snippet", ""),
                     "source_domain": urlparse(url).netloc,
                 })
                 if len(candidates) >= max_results:
                     break
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("[WEB_SEARCH] TinyFish search failed: %s", e)
 
     return candidates
 
