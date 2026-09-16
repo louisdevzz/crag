@@ -3,32 +3,43 @@
 Breaks down Vietnamese normative legal documents following the hierarchical structure:
 Văn bản -> Chương -> Điều -> Khoản -> Điểm.
 Preserves provenance and deterministic locators for citation validation.
+
+Structure recognition is layered instead of hardcoding one document's phrasing
+for its non-Điều sections (Phụ lục / Danh mục / Biểu mẫu / ... — the trailing
+annex name varies per document even though the underlying drafting convention
+does not):
+
+1. Official vocabulary (law-mandated, not a per-document quirk): every
+   Vietnamese normative document follows Nghị định 78/2025/NĐ-CP (and its
+   predecessors) — Phần -> Chương -> Mục -> Tiểu mục -> Điều -> Khoản -> Điểm,
+   with Phụ lục identifiers/titles always rendered in full uppercase.
+   CHAPTER_PATTERN/ARTICLE_PATTERN/CLAUSE_PATTERN/POINT_PATTERN encode exactly
+   this vocabulary and nothing document-specific.
+2. Generic structural fallback for anything else: a document's own
+   non-standard section heading (e.g. "DANH MỤC ...", "BẢNG GIÁ ...", "MẪU SỐ
+   01" — whatever that document actually calls its trailing annex) is
+   recognized the same way a reader skims a scanned legal PDF: a short,
+   standalone line with no lowercase letters and no terminal sentence
+   punctuation, appearing after the document's Điều body has already started.
+   `_is_heading_like` implements that signal; no specific heading word is
+   hardcoded anywhere in this module.
+3. Recurring page furniture (running headers/footers, letterhead, signature
+   blocks, table column headers repeated on every page) is stripped before
+   structural parsing by frequency: any short line containing a letter that
+   appears verbatim 2+ times across the document is furniture, since real
+   prose is never byte-identical across pages. This keeps #2 from mistaking a
+   repeated table header for a new section on every page break.
 """
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional
+from collections import Counter
+from typing import Any, Dict, List, Optional, Tuple
 
 
 CHAPTER_PATTERN = re.compile(
-    r"^(Chương\s+[IVXLCDM\d]+|Mục\s+[IVXLCDM\d]+|Phần\s+[IVXLCDM\d]+)[\.:\s]*(.*)$",
+    r"^(Phần\s+[IVXLCDM\d]+|Chương\s+[IVXLCDM\d]+|Tiểu\s+mục\s+[IVXLCDM\d]+|Mục\s+[IVXLCDM\d]+)[\.:\s]*(.*)$",
     re.IGNORECASE | re.MULTILINE,
-)
-# Annex/appendix boundary — a "PHỤ LỤC" or "DANH MỤC" block appended after
-# the main Điều body (e.g. a table of items "ban hành kèm theo" the document).
-# Distinct from CHAPTER_PATTERN: it marks the *start of an annex region*, not
-# a Chương/Mục nested inside the main body, and its numbered rows use bare
-# "STT" (Số Thứ Tự) integers rather than "Điều"/"Khoản" numbering.
-#
-# Deliberately case-SENSITIVE (unlike the other patterns): these headings are
-# always rendered in full caps in official Vietnamese legal PDFs, and the
-# lowercase phrase "danh mục" (the common noun "list") appears constantly in
-# ordinary prose throughout the preamble and Điều body — matching it
-# case-insensitively misfires on those wrapped prose lines as a false annex
-# boundary.
-ANNEX_PATTERN = re.compile(
-    r"^(PHỤ LỤC|DANH MỤC)\b[\.:\s]*(.*)$",
-    re.MULTILINE,
 )
 ARTICLE_PATTERN = re.compile(
     r"^(Điều\s+\d+)[\.:\s]*(.*)$",
@@ -42,14 +53,65 @@ POINT_PATTERN = re.compile(
     r"^([a-zđ])\)\s+(.*)$",
     re.IGNORECASE | re.MULTILINE,
 )
-# A bare-integer line inside an annex table's "STT" column (e.g. "10" on its
-# own line, description following on subsequent lines) — distinct from
-# CLAUSE_PATTERN, which requires the number and clause text on the same line
-# ("1. Nội dung..."). Matched only against the *expected next* STT value
+# A bare-integer line inside a flat numbered table/annex row (e.g. "10" alone
+# on its own line, the row's description following on subsequent lines) —
+# distinct from CLAUSE_PATTERN, which requires the number and its text on one
+# line ("1. Nội dung..."). Matched only against the *expected next* value
 # (tracked in `parse_legal_document`) so page numbers and other stray bare
 # digits interleaved by PDF text extraction are never mistaken for a new row.
 STT_ITEM_PATTERN = re.compile(r"^(\d{1,3})$")
 
+_HEADING_MIN_LEN = 4
+_HEADING_MAX_LEN = 100
+
+
+def _is_heading_like(line: str) -> bool:
+    """Keyword-free structural heading signal.
+
+    A line "looks like" a section heading when it is short, stands alone (no
+    trailing sentence punctuation), and contains no lowercase letters — the
+    rendering convention Vietnamese legal drafting rules mandate for Phụ lục
+    titles, and that in practice every other top-level heading a document
+    defines (official or not) also follows. Ordinary prose fails this: it
+    wraps across many lines and virtually always ends a sentence/paragraph in
+    terminal punctuation, and Vietnamese diacritics make accidental
+    all-uppercase prose exceedingly rare.
+    """
+    if not (_HEADING_MIN_LEN <= len(line) <= _HEADING_MAX_LEN):
+        return False
+    if line[-1] in ".,;":
+        return False
+    letters = [ch for ch in line if ch.isalpha()]
+    if len(letters) < _HEADING_MIN_LEN:
+        return False
+    return all(not ch.islower() for ch in letters)
+
+
+def _strip_recurring_boilerplate(
+    lines: List[str], line_pages: List[Optional[int]]
+) -> Tuple[List[str], List[Optional[int]]]:
+    """Drop running headers/footers/letterhead/signature-block furniture.
+
+    Any stripped line containing a letter that recurs verbatim 2+ times
+    across the document is page furniture, not content — real prose is never
+    byte-identical across pages. Pure-digit lines (STT/page numbers) are left
+    untouched regardless of frequency: `parse_legal_document` already
+    disambiguates those from noise by sequence position (the *expected next*
+    STT value), which frequency alone cannot do since a genuine row number
+    can coincidentally match an unrelated page number elsewhere.
+    """
+    counts = Counter(
+        s for s in (l.strip() for l in lines) if s and any(ch.isalpha() for ch in s)
+    )
+    kept_lines: List[str] = []
+    kept_pages: List[Optional[int]] = []
+    for line, page in zip(lines, line_pages):
+        stripped = line.strip()
+        if stripped and any(ch.isalpha() for ch in stripped) and counts[stripped] >= 2:
+            continue
+        kept_lines.append(line)
+        kept_pages.append(page)
+    return kept_lines, kept_pages
 
 def parse_legal_document(
     raw_text: str,
@@ -91,6 +153,8 @@ def parse_legal_document(
         lines = raw_text.split("\n")
         line_pages = [None] * len(lines)
 
+    lines, line_pages = _strip_recurring_boilerplate(lines, line_pages)
+
     provisions: List[Dict[str, Any]] = []
     seen_ids: Dict[str, int] = {}
 
@@ -109,6 +173,17 @@ def parse_legal_document(
     current_article_is_stt_item = False
     in_annex = False
     next_stt = 1
+    # True once the first Điều has been seen — the generic (keyword-free)
+    # annex/section fallback only ever applies after this, so a document's
+    # own front matter (letterhead, "CỘNG HÒA XÃ HỘI...", document-type
+    # marker, etc. — all short, standalone, all-caps lines too) is never
+    # mistaken for a section boundary.
+    seen_first_article = False
+    # True while skipping the (possibly line-wrapped) "(Ban hành kèm theo...)"
+    # style parenthetical cross-reference that commonly follows a bare
+    # section heading — generic on the leading "(", not on its wording, so it
+    # never gets glued onto a heading's title (see the title-fill step below).
+    in_paren_gap = False
 
     def flush_article():
         nonlocal current_article_lines, current_article_page_start, current_article_page_end
@@ -121,7 +196,7 @@ def parse_legal_document(
         article_text = "\n".join(current_article_lines).strip()
         page_start = current_article_page_start
         page_end = current_article_page_end
-
+        chapter_display = f"{current_chapter} {current_chapter_title}".strip() if current_chapter_title else current_chapter
         if current_article_is_stt_item:
             # Annex/appendix table row ("STT N" inside a Mục) — the finest unit
             # this document defines for it; no further Khoản/Điểm decomposition
@@ -132,7 +207,7 @@ def parse_legal_document(
             base_id = f"{doc_id}_{chapter_slug}_STT{stt_num}"
             prov_id = make_unique_id(base_id)
             heading = current_chapter_title or current_chapter
-            breadcrumb = f"{doc_title} > {current_chapter} > STT {stt_num}"
+            breadcrumb = f"{doc_title} > {chapter_display} > STT {stt_num}"
 
             provisions.append({
                 "id": prov_id,
@@ -178,7 +253,7 @@ def parse_legal_document(
                 base_id = f"{doc_id}_D{art_num}_K{c_num}" if c_num else f"{doc_id}_D{art_num}"
                 prov_id = make_unique_id(base_id)
                 heading = current_article_title or f"{current_article}"
-                breadcrumb = f"{doc_title} > {current_chapter} > {current_article}"
+                breadcrumb = f"{doc_title} > {chapter_display} > {current_article}"
                 if c_num:
                     breadcrumb += f" > Khoản {c_num}"
 
@@ -209,7 +284,7 @@ def parse_legal_document(
         else:
             base_id = f"{doc_id}_D{art_num}"
             prov_id = make_unique_id(base_id)
-            breadcrumb = f"{doc_title} > {current_chapter} > {current_article}"
+            breadcrumb = f"{doc_title} > {chapter_display} > {current_article}"
             provisions.append({
                 "id": prov_id,
                 "document_id": doc_id,
@@ -244,31 +319,7 @@ def parse_legal_document(
         if not stripped:
             continue
 
-        # Check Annex/Appendix heading ("Phụ lục", "Danh mục ...") — checked
-        # before Chapter/Article so its own STT-numbered rows are recognized
-        # rather than merged into the preceding Điều's last Khoản.
-        annex_match = ANNEX_PATTERN.match(stripped)
-        if annex_match:
-            flush_article()
-            current_chapter = annex_match.group(1).strip()
-            current_chapter_title = annex_match.group(2).strip()
-            current_article = ""
-            current_article_title = ""
-            in_annex = True
-            next_stt = 1
-            continue
-
-        # Check Chapter / Part / Mục heading
-        ch_match = CHAPTER_PATTERN.match(stripped)
-        if ch_match:
-            flush_article()
-            current_chapter = ch_match.group(1).strip()
-            current_chapter_title = ch_match.group(2).strip()
-            current_article = ""
-            current_article_title = ""
-            continue
-
-        # Check Article heading
+        # Article heading — highest-confidence, most specific marker.
         art_match = ARTICLE_PATTERN.match(stripped)
         if art_match:
             flush_article()
@@ -276,6 +327,26 @@ def parse_legal_document(
             current_article_title = art_match.group(2).strip()
             current_article_page_start = page_num
             current_article_page_end = page_num
+            seen_first_article = True
+            in_paren_gap = False
+            continue
+
+        # Official Phần / Chương / Mục / Tiểu mục heading (law-mandated
+        # vocabulary — see module docstring).
+        ch_match = CHAPTER_PATTERN.match(stripped)
+        if ch_match:
+            flush_article()
+            current_chapter = ch_match.group(1).strip()
+            current_chapter_title = ch_match.group(2).strip()
+            current_article = ""
+            current_article_title = ""
+            in_paren_gap = False
+            if current_chapter.lower().startswith(("chương", "phần")):
+                # A real Chương/Phần boundary always outranks an annex table —
+                # any table in progress has ended. Mục/Tiểu mục are left
+                # alone since they commonly subdivide an annex's own rows
+                # (e.g. "Mục I" / "Mục II" inside a "Danh mục ..." annex).
+                in_annex = False
             continue
 
         if in_annex:
@@ -291,12 +362,37 @@ def parse_legal_document(
                 current_article_page_start = page_num
                 current_article_page_end = page_num
                 next_stt += 1
+                in_paren_gap = False
                 continue
-            if not current_article:
-                # Continuation of the Mục/annex title before its first row
-                # (e.g. a two-line title wrapped by the PDF layout).
-                current_chapter_title = f"{current_chapter_title} {stripped}".strip()
+
+        if not current_article and current_chapter:
+            # Between a chapter/annex boundary and its first real provision —
+            # everything here is that heading's own (possibly multi-line,
+            # possibly inline-continued) title, except a "(...)" cross
+            # reference clause (e.g. "(Ban hành kèm theo ...)"), which is
+            # dropped rather than absorbed since it names a decree/issuer, not
+            # the section's subject.
+            if stripped.startswith("(") or in_paren_gap:
+                in_paren_gap = ")" not in stripped
                 continue
+            current_chapter_title = f"{current_chapter_title} {stripped}".strip()
+            continue
+
+        if not in_annex and seen_first_article and _is_heading_like(stripped):
+            # A document-specific section/annex heading with no official
+            # keyword (e.g. "DANH MỤC ..."). Only eligible once the body has
+            # already produced at least one Điều, so a document's own front
+            # matter (letterhead, motto, document-type marker — also short,
+            # standalone, all-caps lines) is never mistaken for one.
+            flush_article()
+            current_chapter = stripped
+            current_chapter_title = ""
+            current_article = ""
+            current_article_title = ""
+            in_annex = True
+            next_stt = 1
+            in_paren_gap = False
+            continue
 
         if current_article:
             current_article_lines.append(stripped)
