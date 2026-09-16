@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 from typing import Any, Dict, List
 
@@ -95,6 +96,61 @@ def _get_catalog_evidence(db_path: str = str(DB_PATH)) -> List[Dict[str, Any]]:
         return []
 
 
+_ARTICLE_QUERY_RE = re.compile(r"[Đđ]i[ềe]u\s*(\d+)\b")
+
+
+def _extract_article_number(query: str) -> str | None:
+    """A query naming an exact "Điều N" is a literal locator reference the user
+    typed, not a semantic judgment call — resolving it via direct lookup below
+    is the same category as `_get_catalog_evidence`'s exact SQL lookup, not
+    the keyword-based coverage heuristics removed from this file earlier."""
+    match = _ARTICLE_QUERY_RE.search(query)
+    return match.group(1) if match else None
+
+
+def _get_article_evidence(article_number: str, db_path: str = str(DB_PATH)) -> List[Dict[str, Any]]:
+    """Exact structural lookup for a named "Điều N": fetch every clause of it
+    directly from `document_chunks`, guaranteeing recall regardless of how the
+    fuzzy dense/BM25 ranking scores it. A verbose query that also repeats a
+    document's full title (e.g. "Điều 2 của QUY ĐỊNH VIỆC KHAI BÁO, ĐIỀU TRA,
+    THỐNG KÊ VÀ BÁO CÁO...") can dilute embedding relevance toward whichever
+    OTHER Điều repeats that dominant title phrase most, starving the actual
+    (short, narrowly-worded) Điều asked about of any evidence at all — observed
+    live: "Điều 2. Đối tượng áp dụng" was never retrieved even though the
+    query named it explicitly, and the model filled the gap with a plausible
+    but ungrounded guess from generic Vietnamese circular structure instead.
+    """
+    if not os.path.exists(db_path):
+        return []
+    try:
+        with sqlite3.connect(db_path) as con:
+            cur = con.cursor()
+            rows = cur.execute(
+                """
+                SELECT dc.id, dc.heading, dc.content, dc.clause, d.document_number
+                FROM document_chunks dc
+                JOIN documents d ON d.id = dc.document_id
+                WHERE dc.article = ? AND d.status = 'READY'
+                ORDER BY dc.chunk_index
+                """,
+                (f"Điều {article_number}",),
+            ).fetchall()
+            return [
+                {
+                    "strip_id": r[0],
+                    "heading": r[1] or f"Điều {article_number}",
+                    "text": r[2],
+                    "score": 0.99,
+                    "source_priority": 1,
+                    "retrieval_source": "internal_exact_locator",
+                }
+                for r in rows
+            ]
+    except Exception as e:
+        log.warning("[CRAG] Failed to query exact Điều locator: %s", e)
+        return []
+
+
 def crag_search(query: str, db_path: str = str(DB_PATH)) -> Dict[str, Any]:
     """Hybrid retrieval + self-correction over the indexed legal knowledge base."""
     if _is_catalog_query(query):
@@ -120,6 +176,19 @@ def crag_search(query: str, db_path: str = str(DB_PATH)) -> Dict[str, Any]:
     scores = [float(d.get("score", 0.0)) for d in reranked]
     action = decide_crag_action(scores, t_low=T_LOW, t_high=T_HIGH)
     strips = refine_internal(query, reranked)
+
+    # Exact-locator fast path: a query naming "Điều N" gets that Điều's clauses
+    # fetched directly, ahead of whatever the fuzzy ranking above found — see
+    # `_get_article_evidence` docstring for why fuzzy ranking alone can miss it
+    # entirely. Guaranteed evidence for a literally-named provision makes this
+    # CORRECT regardless of what the fuzzy pipeline's score distribution said.
+    article_number = _extract_article_number(query)
+    if article_number:
+        article_strips = _get_article_evidence(article_number, db_path)
+        if article_strips:
+            existing_ids = {s.get("strip_id") for s in strips}
+            strips = article_strips + [s for s in strips if s.get("strip_id") not in existing_ids]
+            action = "CORRECT"
 
     result = {
         "crag_action": action,

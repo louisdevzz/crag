@@ -96,7 +96,7 @@ export default function StreamingText({
 
       {/* action icons row & sources toggle */}
       <div
-        className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line/50 pt-2 transition-opacity duration-300"
+        className="flex flex-wrap items-center justify-between gap-2 transition-opacity duration-300"
         style={{ opacity: isStreaming ? 0.6 : 1 }}
       >
         <div className="flex items-center gap-1">
@@ -169,101 +169,7 @@ export default function StreamingText({
             </svg>
           </button>
         </div>
-
-        {/* sources toggle chip */}
-        {sources && sources.length > 0 && (
-          <button
-            type="button"
-            aria-expanded={sourcesOpen}
-            onClick={() => setSourcesOpen((c) => !c)}
-            className="flex items-center gap-1.5 rounded-control bg-field px-2 py-1 text-left text-[11.5px] text-ink-2 shadow-hairline transition-colors duration-150 hover:bg-hover hover:text-ink cursor-pointer"
-          >
-            <span className="font-medium">
-              {sources.length} {l.sources.toLowerCase()}
-            </span>
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="transition-transform duration-200"
-              style={{ transform: sourcesOpen ? "rotate(180deg)" : "rotate(0)" }}
-            >
-              <path d="M6 9l6 6 6-6" />
-            </svg>
-          </button>
-        )}
       </div>
-
-      {/* expandable sources list */}
-      {sourcesOpen && sources.length > 0 && (
-        <div
-          className="mt-2.5 flex flex-col gap-1.5 rounded-card bg-surface p-2.5 shadow-card border border-line"
-          style={{ animation: "fade-up 200ms cubic-bezier(0.23,1,0.32,1) both" }}
-        >
-          <div className="text-[11.5px] font-semibold text-ink px-1">
-            {l.sources} ({sources.length}):
-          </div>
-          <div className="flex flex-col gap-1">
-            {sources.map((src, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between gap-2 rounded-md px-2 py-1 hover:bg-hover transition-colors"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="size-1.5 shrink-0 rounded-full bg-accent" />
-                  <span className="text-[12px] font-medium text-ink truncate">
-                    {src.name}
-                  </span>
-                </div>
-                {src.href ? (
-                  <a
-                    href={src.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="shrink-0 text-[11px] text-accent hover:underline"
-                  >
-                    {src.domain || "Xem văn bản"} →
-                  </a>
-                ) : (
-                  <span className="shrink-0 font-mono text-[10.5px] text-ink-3">
-                    {src.domain}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* follow-up prompts */}
-      {followUps && followUps.length > 0 && !isStreaming && (
-        <div
-          className="mt-3.5 flex flex-col gap-1.5"
-          style={{ animation: "fade-up 350ms cubic-bezier(0.23,1,0.32,1) both" }}
-        >
-          <span className="text-[11px] font-medium uppercase tracking-wider text-ink-3">
-            {l.followUps}
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            {followUps.map((prompt, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => onFollowUp?.(prompt)}
-                className="inline-flex items-center gap-1.5 rounded-full bg-field px-3 py-1.5 text-[12px] text-ink-2 shadow-hairline transition-all duration-150 hover:bg-hover hover:text-ink active:scale-95 cursor-pointer"
-              >
-                <span>{prompt}</span>
-                <span className="text-ink-3">→</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

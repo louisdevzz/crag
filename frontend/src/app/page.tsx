@@ -312,7 +312,7 @@ export default function HomePage() {
                 liveStage={liveStage}
                 onFollowUp={handleSendMessage}
               />
-              <div className="mx-auto w-full max-w-3xl flex-shrink-0 px-4 pb-4">
+              <div className="mx-auto w-full max-w-3xl lg:max-w-4xl flex-shrink-0 px-4 pb-4">
                 <PromptComposer onSend={handleSendMessage} {...composerProps} />
                 <p className="mt-2 text-center text-[11px] text-muted-foreground">
                   Mọi câu trả lời đều được kiểm định xác thực từ kho văn bản quy phạm pháp luật nội

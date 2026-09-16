@@ -199,7 +199,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       busy={isLoading}
       label="Hội thoại pháp lý"
       className="flex-1"
-      contentClassName="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6"
+      contentClassName="mx-auto flex w-full max-w-3xl lg:max-w-4xl flex-col gap-6 px-4 py-6"
     >
       {messages.map((msg) => {
         const contextChunks = toContextChunks(msg.trace?.evidence);
