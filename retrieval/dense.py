@@ -1,6 +1,7 @@
 """Dense Semantic Retrieval Module using ChromaDB."""
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -9,15 +10,31 @@ from langchain_chroma import Chroma
 from config import CHROMA_COLLECTION, CHROMA_DIR, TOP_K_DENSE
 from llm import get_embeddings
 
+_VECTORSTORE_CACHE: Dict[str, Chroma] = {}
+_VECTORSTORE_LOCK = threading.Lock()
+
 
 def get_vectorstore(chroma_dir: Path | str = CHROMA_DIR) -> Chroma:
-    """Load the persistent Chroma collection."""
-    embeddings = get_embeddings()
-    return Chroma(
-        collection_name=CHROMA_COLLECTION,
-        embedding_function=embeddings,
-        persist_directory=str(chroma_dir),
-    )
+    """Cached Chroma collection handle — constructing `Chroma(...)` re-opens the
+    persistent client and re-resolves the embedding function, so every distinct
+    `chroma_dir` is opened at most once per process and shared by every
+    `dense_retrieve` call and the ingestion indexer (same process, `ThreadPoolExecutor`
+    background workers), keeping reads consistent with writes."""
+    key = str(chroma_dir)
+    cached = _VECTORSTORE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    with _VECTORSTORE_LOCK:
+        cached = _VECTORSTORE_CACHE.get(key)
+        if cached is not None:
+            return cached
+        instance = Chroma(
+            collection_name=CHROMA_COLLECTION,
+            embedding_function=get_embeddings(),
+            persist_directory=str(chroma_dir),
+        )
+        _VECTORSTORE_CACHE[key] = instance
+        return instance
 
 
 def dense_retrieve(

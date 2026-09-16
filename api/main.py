@@ -36,14 +36,35 @@ log = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan handler: ensure system directories and database exist."""
+    """Lifespan handler: ensure system directories/database exist, then warm the
+    embedding model, reranker, and Chroma vectorstore singletons (retrieval.dense,
+    retrieval.reranker, llm.get_embeddings) once at boot — each is expensive to
+    construct (loads a transformer model from disk) but cached for the life of the
+    process, so paying that cost here means every `crag_search` call and document
+    upload afterward is fast instead of the first one after each cold start."""
     try:
         from scripts.init_system import init_system
         init_system(quiet=True)
         log.info("System initialized successfully on startup (DB at %s)", DB_PATH)
     except Exception as e:
         log.warning("Auto-initialization on startup encountered warning: %s", e)
+
+    try:
+        import asyncio
+        await asyncio.to_thread(_warm_retrieval_singletons)
+    except Exception as e:
+        log.warning("Retrieval model warmup failed (%s) -> will lazy-load on first request", e)
+
     yield
+
+
+def _warm_retrieval_singletons() -> None:
+    from retrieval.dense import get_vectorstore
+    from retrieval.reranker import get_reranker
+
+    get_vectorstore()
+    get_reranker()
+    log.info("Retrieval singletons warmed (embedding model + reranker + Chroma vectorstore ready)")
 
 
 app = FastAPI(

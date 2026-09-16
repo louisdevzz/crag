@@ -44,16 +44,18 @@ function toActivityItems(msg: Message): AgentActivityItem[] {
   const isRag = (msg.trace?.route || "").toLowerCase() === "rag" || (msg.trace?.evidence?.length || 0) > 0;
   const action = (msg.trace?.cragAction || "").toUpperCase();
 
-  // Step 1: Think
-  items.push({
-    id: `${msg.id}-think`,
-    type: "text",
-    label: "Phân tích yêu cầu",
-    content: isRag
-      ? "Xác định câu hỏi pháp lý và các văn bản quy phạm liên quan trong kho tri thức doanh nghiệp."
-      : "Trao đổi thông thường, giải thích và định hướng tra cứu pháp luật.",
-    status: "complete",
-  });
+  // Step 1: Think — only meaningful for RAG turns (search/CRAG/citation chain
+  // follows it); a plain chit-chat reply has nothing to disclose beyond the
+  // "Đã suy nghĩ" timing header, so no item is pushed for it.
+  if (isRag) {
+    items.push({
+      id: `${msg.id}-think`,
+      type: "text",
+      label: "Suy nghĩ",
+      content: "Xác định câu hỏi pháp lý và các văn bản quy phạm liên quan trong kho tri thức doanh nghiệp.",
+      status: "complete",
+    });
+  }
 
   // Step 2: Search (if RAG)
   if (isRag) {
@@ -196,9 +198,6 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, l
               </div>
             ) : (
               <div className="flex w-full items-start gap-3.5 group">
-                <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20 shadow-xs">
-                  <Sparkles className="h-4 w-4" />
-                </div>
                 <div className="min-w-0 flex-1">
                   <StreamingResponse
                     status={msg.isStreaming ? "streaming" : "complete"}
@@ -234,9 +233,6 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, l
       {/* Streaming state before first token arrives */}
       {isLoading && liveStage !== null && (
         <div className="flex w-full items-start gap-3.5">
-          <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20 animate-pulse">
-            <Sparkles className="h-4 w-4" />
-          </div>
           <div className="min-w-0 flex-1">
             <AgentActivity
               items={[
@@ -245,19 +241,19 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, l
                   type: "step",
                   label:
                     liveStage === 0
-                      ? "Phân tích câu hỏi & lựa chọn công cụ"
+                      ? "Đang suy nghĩ"
                       : liveStage === 1
-                      ? "Truy hồi bằng chứng (CRAG / Web)"
+                      ? "Tra cứu kho tri thức pháp lý"
                       : liveStage === 2
-                      ? "Đánh giá & tinh lọc căn cứ"
-                      : "Kiểm định trích dẫn & hoàn thiện câu trả lời",
+                      ? "Tổng hợp & đánh giá căn cứ"
+                      : "Hoàn thiện câu trả lời",
                   status: "active",
                 },
               ]}
               status="working"
               activeLabel={
                 liveStage === 0
-                  ? "Đang phân tích câu hỏi…"
+                  ? "Đang suy nghĩ…"
                   : liveStage === 1
                   ? "Đang tra cứu kho tri thức…"
                   : liveStage === 2

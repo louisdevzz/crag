@@ -3,15 +3,11 @@
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  Briefcase,
-  Building2,
   Database,
   Folder,
-  HeartPulse,
   MessageSquare,
   MessageSquarePlus,
   PanelLeft,
-  Receipt,
   Scale,
   Search,
   Sparkles,
@@ -24,7 +20,6 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
@@ -40,16 +35,8 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { ConversationSummary, groupConversationsByDay } from "@/lib/history";
-import { groupDocumentsByCategory } from "@/lib/categories";
 import { LegalDocument } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  "Bảo hiểm xã hội": HeartPulse,
-  "Đăng ký doanh nghiệp": Building2,
-  "Luật lao động": Briefcase,
-  "Thuế doanh nghiệp": Receipt,
-};
 
 interface AppSidebarProps {
   clientId: string;
@@ -79,7 +66,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
 
-  const categoryGroups = useMemo(() => groupDocumentsByCategory(documents), [documents]);
   const dayGroups = useMemo(() => groupConversationsByDay(conversations), [conversations]);
 
   const filteredConversations = conversations.filter((c) =>
@@ -200,40 +186,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
             ))
           )}
 
-          {/* Legal Categories Section */}
-          {categoryGroups.length > 0 && (
-            <SidebarGroup className="mt-2 pt-2 border-t border-sidebar-border/40">
-              <SidebarGroupLabel className="text-[11px] font-semibold text-sidebar-foreground/50 px-2 py-1">
-                Kho quy phạm
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {categoryGroups.map(({ category, documents: docs }) => {
-                    const Icon = CATEGORY_ICONS[category] || Folder;
-                    return (
-                      <SidebarMenuItem key={category}>
-                        <SidebarMenuButton
-                          onClick={() =>
-                            onSelectPrompt(
-                              `Cho tôi biết những quy định pháp lý chính trong nhóm văn bản "${category}".`
-                            )
-                          }
-                          tooltip={`${category} (${docs.length})`}
-                          className="text-xs text-sidebar-foreground/75 hover:bg-sidebar-accent/50 rounded-lg"
-                        >
-                          <Icon className="h-3.5 w-3.5 text-sidebar-foreground/50 flex-shrink-0" />
-                          <span className="truncate">{category}</span>
-                        </SidebarMenuButton>
-                        <SidebarMenuBadge className="text-[10px] font-mono text-sidebar-foreground/50">
-                          {docs.length}
-                        </SidebarMenuBadge>
-                      </SidebarMenuItem>
-                    );
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          )}
         </SidebarContent>
 
       </Sidebar>

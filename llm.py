@@ -9,7 +9,8 @@ Provides pluggable access to:
 from __future__ import annotations
 
 import os
-from typing import Optional
+import threading
+from typing import Any, Dict, Optional
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
@@ -131,18 +132,36 @@ def get_chat_model_with_fallback(
     log.error("Provider Manager: every candidate provider failed to initialize (%s) -> no LLM available", tried)
     return None
 
-def get_embeddings(provider: Optional[str] = None, model: Optional[str] = None):
-    """Factory function to initialize real text embedding models.
+_EMBEDDINGS_CACHE: Dict[tuple, Any] = {}
+_EMBEDDINGS_LOCK = threading.Lock()
 
-    Strictly enforces real providers and models without fallback to dummy hashing vectors.
-    Supported providers:
-    - 'huggingface' / 'sentence-transformers': Uses local weights (e.g. BAAI/bge-m3)
-    - 'openai': Uses OpenAI text-embedding-3-* via API
-    - 'ollama': Uses Ollama local embedding models
+
+def get_embeddings(provider: Optional[str] = None, model: Optional[str] = None):
+    """Cached factory for real text embedding models — the underlying client (e.g.
+    HuggingFaceEmbeddings, which loads a multi-hundred-MB transformer from disk into
+    memory) is expensive to construct, so every (provider, model) pair is built at
+    most once per process and reused across every `crag_search` call and ingestion
+    run, mirroring `retrieval.reranker`'s singleton pattern. Thread-safe: FastAPI runs
+    sync request handlers in a threadpool, so concurrent first requests could
+    otherwise race to construct (and load) the model twice.
     """
     p = (provider or os.getenv("EMBEDDING_PROVIDER") or EMBEDDING_PROVIDER).lower().strip()
     m = model or os.getenv("EMBEDDING_MODEL") or EMBEDDING_MODEL
+    key = (p, m)
+    cached = _EMBEDDINGS_CACHE.get(key)
+    if cached is not None:
+        return cached
+    with _EMBEDDINGS_LOCK:
+        cached = _EMBEDDINGS_CACHE.get(key)
+        if cached is not None:
+            return cached
+        instance = _build_embeddings(p, m)
+        _EMBEDDINGS_CACHE[key] = instance
+        return instance
 
+
+def _build_embeddings(p: str, m: str):
+    """One-time construction of the embedding client for `(p, m)`; see `get_embeddings`."""
     if p in ("huggingface", "sentence-transformers"):
         try:
             from langchain_community.embeddings import HuggingFaceEmbeddings
