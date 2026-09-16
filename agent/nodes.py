@@ -149,19 +149,57 @@ def _parse_generation_flexible(content: Any, evidence: List[Dict[str, Any]] = No
     clean_text = re.sub(r"<function=[\w.\-]+>[\s\S]*?</function>", "", clean_text).strip()
 
     if not clean_text:
-        clean_text = _GENERAL_FALLBACK["answer"]
+        # A model that leaked <tool_call>/<function=...> text in the FINAL round
+        # (tools no longer bound, but it still "wants" to search more) loses its
+        # entire response to the strip above. Falling back to the generic
+        # greeting here would answer a real legal question — with real evidence
+        # already gathered — as if nothing had been asked at all; synthesize
+        # from the evidence instead, and only greet when there is truly nothing.
+        return _deterministic_answer_from_evidence(evidence) if evidence else dict(_GENERAL_FALLBACK)
 
-    # Extract claims with citations from text: e.g. [DOC_...], [CATALOG_...], [E1]
+    # Extract claims with citations from text. The model is asked for [source_id]
+    # brackets but, in practice, reliably writes natural "(Điều 5)" mentions in
+    # the SECTION HEADER once, then several body sentences below elaborate
+    # without repeating it — live testing showed forcing bracket-per-sentence
+    # fights the natural-tone prompt and gets ignored outright. Evidence
+    # headings from `legal.parser` are always "Điều N. <title>", so a
+    # mentioned Điều number maps directly to the real source that was
+    # actually retrieved for it, and a heading's Điều becomes the citation
+    # context for the body sentences under it (until the next heading).
     claims: List[Dict[str, Any]] = []
-    citation_regex = re.compile(r"\[([A-Za-z0-9_\-]+)\]")
-    sentences = re.split(r"(?<=[.!?\n])\s+", clean_text)
-    for sentence in sentences:
-        s = sentence.strip()
-        if not s:
+    bracket_re = re.compile(r"\[([A-Za-z0-9_\-]+)\]")
+    dieu_mention_re = re.compile(r"[Đđ]i[ềe]u\s*(\d+)")
+    dieu_heading_re = re.compile(r"^\s*[Đđ]i[ềe]u\s*(\d+)\b")
+    markdown_heading_re = re.compile(r"^\s{0,3}#{1,6}\s")
+    dieu_index: Dict[str, str] = {}
+    for item in (evidence or []):
+        heading_match = dieu_heading_re.match(str(item.get("heading") or ""))
+        sid = item.get("strip_id") or item.get("locator") or item.get("evidence_id")
+        if heading_match and sid and heading_match.group(1) not in dieu_index:
+            dieu_index[heading_match.group(1)] = str(sid)
+
+    section_dieu_sid: Optional[str] = None
+    for line in clean_text.split("\n"):
+        line = line.strip()
+        if not line:
             continue
-        cites = citation_regex.findall(s)
-        if cites:
-            claims.append({"text": s, "source_ids": cites})
+        if markdown_heading_re.match(line):
+            nums = dieu_mention_re.findall(line)
+            if nums and nums[0] in dieu_index:
+                section_dieu_sid = dieu_index[nums[0]]
+            continue  # a heading names a section, it is not itself a claim
+
+        for sentence in re.split(r"(?<=[.!?])\s+", line):
+            s = sentence.strip()
+            if not s:
+                continue
+            cites = list(dict.fromkeys(
+                bracket_re.findall(s) + [dieu_index[n] for n in dieu_mention_re.findall(s) if n in dieu_index]
+            ))
+            if not cites and section_dieu_sid:
+                cites = [section_dieu_sid]
+            if cites:
+                claims.append({"text": s, "source_ids": cites})
 
     lower_text = clean_text.lower()
     abstain = "chưa đủ căn cứ pháp lý" in lower_text or "không đủ căn cứ pháp lý" in lower_text
@@ -250,12 +288,29 @@ def agent_node(state: AgentState) -> Dict[str, Any]:
         # the model's behalf. That would make crag_search/controlled_web_search
         # selection an if/else in the harness instead of a real agent decision (see
         # `.temp/hermes-agent/AGENTS.md`: "the core is a narrow waist; capability
-        # lives at the edges" — domain judgment belongs to the model). Bounded like
-        # every other retry loop in this file (MAX_EVIDENCE_GAP_NUDGES) so a model
-        # that ignores the nudge still terminates instead of looping forever.
+        # lives at the edges" — domain judgment belongs to the model). Bounded
+        # (MAX_EVIDENCE_GAP_NUDGES) so a model that ignores the nudge still
+        # terminates instead of looping forever.
+        #
+        # An LLM self-critique variant of this nudge (ask the model to judge its
+        # own draft's completeness/citations) was tried and reverted: live testing
+        # showed it reliably drove 2-3 extra search rounds that then exhausted
+        # MAX_TOOL_ROUNDS, and the forced final answer after that many rounds came
+        # back as a garbled one-sentence fragment — worse than the single-pass
+        # answer it was trying to improve. The ML-score signal below is cheap,
+        # bounded, and empirically reliable; it stays as the only nudge trigger.
+        #
+        # The draft `ai_msg` is KEPT in history and the nudge is appended as a
+        # `HumanMessage` (not a bare `SystemMessage` replacing the draft) — discarding
+        # the assistant's turn and stacking consecutive system-role messages after a
+        # single human turn, with no assistant reply between them, is a conversation
+        # shape real chat templates are not trained on; live testing on qwen3.8-27b
+        # showed exactly two stacked system nudges degenerate the model's THIRD
+        # response into an unrelated greeting. Normal user/assistant/user/assistant
+        # alternation is the shape every chat model is reliably trained on.
         nudge_count = sum(
             1 for m in messages
-            if isinstance(m, SystemMessage) and m.content.startswith(_EVIDENCE_GAP_NUDGE_PREFIX)
+            if isinstance(m, HumanMessage) and m.content.startswith(_EVIDENCE_GAP_NUDGE_PREFIX)
         )
         if nudge_count < MAX_EVIDENCE_GAP_NUDGES:
             nudge = _evidence_gap_nudge(state)
@@ -264,7 +319,7 @@ def agent_node(state: AgentState) -> Dict[str, Any]:
                     "[AGENT] evidence gap detected -> nudging model to decide its own next step (attempt %d/%d): %s",
                     nudge_count + 1, MAX_EVIDENCE_GAP_NUDGES, nudge[:160],
                 )
-                return {"messages": [SystemMessage(content=nudge)]}
+                return {"messages": [ai_msg, HumanMessage(content=nudge)]}
 
     updates: Dict[str, Any] = {"messages": ([final_round_reminder] if final_round_reminder else []) + [ai_msg]}
     if not ai_msg.tool_calls:
