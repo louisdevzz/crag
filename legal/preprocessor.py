@@ -363,7 +363,20 @@ class UniversalLegalPreprocessor:
         return result
 
     def _extract_text_from_docx(self, docx_path: Path) -> str:
-        """Extract text from DOCX file."""
+        """Extract text from a Word document — modern `.docx` (OOXML/zip) or
+        legacy binary `.doc` (OLE2 Compound File — an entirely different
+        container format, not a zip, so python-docx cannot open it at all;
+        it raises `zipfile.BadZipFile` on one).
+
+        `.docx` is parsed directly with python-docx. Legacy `.doc` is parsed
+        with `sharepoint2text`, a pure-Python OLE2/MS-DOC reader — no
+        external binary (antiword/LibreOffice) or JVM (Apache Tika)
+        dependency, unlike every other common approach to this format.
+        """
+        if docx_path.suffix.lower() == ".doc":
+            import sharepoint2text
+            document = next(sharepoint2text.read_file(docx_path))
+            return document.full_text
         import docx
         doc = docx.Document(docx_path)
         return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])

@@ -29,5 +29,6 @@ dependencies = [
     "reportlab>=5.0.1",
     "requests>=2.31.0",
     "sentence-transformers>=3.0.0",
+    "sharepoint-to-text>=2.0.0",
     "uvicorn[standard]>=0.30.0",
 ]

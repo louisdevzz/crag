@@ -100,10 +100,11 @@ def index_document_chunks(
 
 
 def remove_document_from_chroma(document_id: str, chroma_dir: Path | str = CHROMA_DIR) -> None:
+    """Delete every vector belonging to one document. Lets a real Chroma/DB error
+    propagate instead of swallowing it — a caller (document delete, or re-ingestion's
+    drop-before-reindex) must see the failure rather than silently leave orphaned
+    vectors behind while believing the removal succeeded."""
     vectorstore = get_vectorstore(chroma_dir)
-    try:
-        existing = vectorstore.get(where={"document_id": document_id})
-        if existing and existing.get("ids"):
-            vectorstore.delete(ids=existing["ids"])
-    except Exception:
-        pass
+    existing = vectorstore.get(where={"document_id": document_id})
+    if existing and existing.get("ids"):
+        vectorstore.delete(ids=existing["ids"])
