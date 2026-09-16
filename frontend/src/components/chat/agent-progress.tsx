@@ -6,10 +6,12 @@
  * (collapsible multi-step task list with animated active/pending/completed
  * states): https://www.boardui.com/components/agent-progress
  *
- * `stage` is driven by real `{"type":"node",...}` SSE events emitted as each
- * LangGraph node actually completes (see /api/chat/stream) — not a
- * client-side timer. The component unmounts the instant the first live
- * answer token arrives and is replaced by the streaming assistant bubble.
+ * `stage` is driven by real `{"type":"node",...}` SSE events emitted as the
+ * ReAct Agent Core loop (agent <-> tools) actually executes (see
+ * /api/chat/stream) — not a client-side timer. There is no router step: the
+ * agent itself decides whether to call a tool. The component unmounts the
+ * instant the first live answer token arrives and is replaced by the
+ * streaming assistant bubble.
  */
 import React, { useState } from "react";
 import { Check, ChevronDown, Circle, Loader2, Sparkles } from "lucide-react";
@@ -17,9 +19,9 @@ import { cn } from "@/lib/utils";
 import { AgentThinking } from "./agent-thinking";
 
 const STEP_TITLES = [
-  "Điều hướng & phân tích truy vấn",
-  "Truy hồi bằng chứng pháp lý",
-  "Tinh chỉnh theo nhánh CRAG",
+  "Phân tích câu hỏi & lựa chọn công cụ",
+  "Truy hồi bằng chứng (CRAG / tìm kiếm ngoài)",
+  "Tổng hợp & đánh giá bằng chứng",
   "Sinh câu trả lời & kiểm định trích dẫn",
 ];
 

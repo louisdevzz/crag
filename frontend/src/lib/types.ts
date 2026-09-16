@@ -39,8 +39,8 @@ export interface ChatResponse {
   client_id: string;
   session_id: string;
   query: string;
-  route: "database" | "rag" | "general" | string;
-  crag_action: "CORRECT" | "AMBIGUOUS" | "INCORRECT" | "DATABASE" | string;
+  route: "rag" | "general" | string;
+  crag_action: "CORRECT" | "AMBIGUOUS" | "INCORRECT" | string;
   generation: GenerationOutput;
   citation_report: CitationReport;
   evidence_count: number;
@@ -77,6 +77,8 @@ export interface Message {
   timestamp: string;
   isStreaming?: boolean;
   citationReport?: CitationReport;
+  claims?: ClaimItem[];
+  durationMs?: number;
   trace?: {
     route: string;
     cragAction: string;
@@ -105,42 +107,67 @@ export interface HistoryItem {
   created_at: string;
 }
 
-export interface AdminDocument {
+export interface AdminDocumentSummary {
   id: string;
-  document_number: string;
+  filename: string;
+  document_number: string | null;
   title: string;
-  document_type?: string;
-  issuing_authority?: string;
-  issued_at?: string;
-  effective_from?: string;
-  effective_to?: string;
-  status?: string;
-  source_url?: string;
-  retrieved_at?: string;
-  provisions_count: number;
+  document_type: string | null;
+  issuing_authority: string | null;
+  issued_at: string | null;
+  effective_from: string | null;
+  effective_to: string | null;
+  status: "UPLOADED" | "PROCESSING" | "READY" | "FAILED";
+  page_count: number;
+  chunk_count: number;
+  stage: string | null;
+  error_message: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface IngestionJobInfo {
+  id: string;
+  stage: "PARSING" | "OCR" | "STRUCTURING" | "CHUNKING" | "EMBEDDING" | "INDEXING" | "DONE" | "FAILED";
+  progress: number;
+  error_message: string | null;
+}
+
+export interface AdminDocumentDetail extends AdminDocumentSummary {
+  job: IngestionJobInfo | null;
+}
+
+export interface ChunkItem {
+  id: string;
+  chunk_index: number;
+  chapter: string | null;
+  article: string | null;
+  clause: string | null;
+  point: string | null;
+  heading: string | null;
+  page_start: number | null;
+  page_end: number | null;
+  content: string;
+  token_count: number | null;
 }
 
 export interface AdminStats {
   total_documents: number;
-  total_provisions: number;
-  bm25_indexed: number;
-  chroma_indexed: number;
+  ready: number;
+  processing: number;
+  failed: number;
 }
 
-export interface IngestResult {
+export interface UploadResult {
   document_id: string;
-  document_number: string;
-  title: string;
-  provisions_count: number;
-  strips_count: number;
-  corpus_total_provisions: number;
+  status: string;
+  job_id: string;
 }
 
 export interface DeleteResult {
   document_id: string;
-  document_number: string;
-  deleted_provisions: number;
-  corpus_total_provisions: number;
+  filename: string;
+  deleted_chunks: number;
 }
 
 export interface ClientMemoryProfile {

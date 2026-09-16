@@ -105,6 +105,32 @@ def get_chat_model(
         return None
 
 
+def get_chat_model_with_fallback(
+    temperature: Optional[float] = None,
+    **kwargs,
+) -> BaseChatModel:
+    """Provider Manager: try `CONFIG.llm.provider` first, then each of
+    `CONFIG.llm.fallback_providers` in order, returning the first client that
+    initializes successfully (has credentials and constructs without error).
+
+    This only covers *initialization* failures (missing API key, import error,
+    unknown provider) — a provider that initializes but fails mid-request still
+    falls back to the deterministic evidence-synthesis path in `agent/nodes.py`,
+    not to a different provider, since retrying a different provider mid-stream
+    would require re-issuing the whole request.
+    """
+    tried = []
+    candidates = [CONFIG.llm.provider] + [p for p in CONFIG.llm.fallback_providers if p != CONFIG.llm.provider]
+    for provider in candidates:
+        tried.append(provider)
+        model = get_chat_model(provider=provider, temperature=temperature, **kwargs)
+        if model is not None:
+            if provider != CONFIG.llm.provider:
+                log.warning("Provider Manager: primary=%s unavailable -> fell back to provider=%s", CONFIG.llm.provider, provider)
+            return model
+    log.error("Provider Manager: every candidate provider failed to initialize (%s) -> no LLM available", tried)
+    return None
+
 def get_embeddings(provider: Optional[str] = None, model: Optional[str] = None):
     """Factory function to initialize real text embedding models.
 

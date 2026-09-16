@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from config import PROCESSED_DATA_DIR, TOP_K_BM25
-from ingest import tokenize_vi
+from ingestion.text import tokenize_vi
 
 
 _BM25_CACHE: Optional[Dict[str, Any]] = None
@@ -21,7 +21,7 @@ def load_bm25_index(index_path: Path | str = PROCESSED_DATA_DIR / "bm25_index.pk
         return _BM25_CACHE
 
     if not index_path.exists():
-        raise FileNotFoundError(f"BM25 index not found at {index_path}. Run ingest.py first.")
+        raise FileNotFoundError(f"BM25 index not found at {index_path}. Upload a document via the Admin panel first.")
 
     with open(index_path, "rb") as f:
         _BM25_CACHE = pickle.load(f)
@@ -50,7 +50,7 @@ def bm25_retrieve(
     """
     index_data = load_bm25_index(index_path)
     bm25 = index_data["bm25"]
-    provisions = index_data["provisions"]
+    chunks = index_data.get("chunks", index_data.get("provisions", []))
 
     tokenized_query = tokenize_vi(query)
     if not tokenized_query:
@@ -67,7 +67,7 @@ def bm25_retrieve(
         score = raw_scores[idx]
         if score <= 0.0:
             continue
-        p = provisions[idx].copy()
+        p = chunks[idx].copy()
         p["score"] = float(score / max_score)  # Min-max normalized
         p["raw_bm25_score"] = float(score)
         p["retrieval_source"] = "bm25"

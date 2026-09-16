@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Database, FileText, Layers3, ListTree } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, Loader2 } from "lucide-react";
 import { AdminStats } from "../../lib/types";
 
 interface StatsCardsProps {
@@ -10,10 +10,10 @@ interface StatsCardsProps {
 }
 
 const CARD_DEFS = [
-  { key: "total_documents", label: "Văn bản đã nạp", icon: FileText },
-  { key: "total_provisions", label: "Điều khoản (SQLite)", icon: ListTree },
-  { key: "bm25_indexed", label: "Mục BM25 (Lexical)", icon: Layers3 },
-  { key: "chroma_indexed", label: "Vector Chroma (Dense)", icon: Database },
+  { key: "total_documents", label: "Tổng văn bản", icon: FileText },
+  { key: "ready", label: "Sẵn sàng", icon: CheckCircle2 },
+  { key: "processing", label: "Đang xử lý", icon: Loader2 },
+  { key: "failed", label: "Lỗi", icon: AlertTriangle },
 ] as const;
 
 export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading }) => {

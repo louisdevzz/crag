@@ -1,17 +1,20 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, Trash2 } from "lucide-react";
 import { deleteAdminDocument } from "../../lib/api";
-import { AdminDocument } from "../../lib/types";
+import { AdminDocumentSummary } from "../../lib/types";
+import { StatusPill } from "./StatusPill";
 
 interface DocumentsTableProps {
-  documents: AdminDocument[];
+  documents: AdminDocumentSummary[];
   isLoading: boolean;
   onDeleted: (documentId: string) => void;
 }
 
 export const DocumentsTable: React.FC<DocumentsTableProps> = ({ documents, isLoading, onDeleted }) => {
+  const router = useRouter();
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -39,54 +42,51 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({ documents, isLoa
         <table className="w-full text-xs">
           <thead>
             <tr className="bg-dsh-surface text-dsh-muted uppercase text-[10px] font-bold tracking-wider">
-              <th className="text-left px-4 py-2">Số hiệu</th>
-              <th className="text-left px-4 py-2">Tiêu đề</th>
+              <th className="text-left px-4 py-2">Tệp</th>
               <th className="text-left px-4 py-2">Cơ quan ban hành</th>
               <th className="text-left px-4 py-2">Hiệu lực từ</th>
               <th className="text-left px-4 py-2">Trạng thái</th>
-              <th className="text-right px-4 py-2">Điều khoản</th>
+              <th className="text-right px-4 py-2">Chunks</th>
               <th className="text-right px-4 py-2">Hành động</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-dsh-border">
             {isLoading && documents.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-dsh-muted italic">
+                <td colSpan={6} className="px-4 py-8 text-center text-dsh-muted italic">
                   Đang tải danh mục...
                 </td>
               </tr>
             ) : documents.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-dsh-muted italic">
+                <td colSpan={6} className="px-4 py-8 text-center text-dsh-muted italic">
                   Chưa có văn bản nào được nạp vào kho tri thức.
                 </td>
               </tr>
             ) : (
               documents.map((doc) => (
-                <tr key={doc.id} className="hover:bg-dsh-surface transition-colors">
-                  <td className="px-4 py-2.5 font-mono font-semibold text-dsh-ink whitespace-nowrap">
-                    {doc.document_number}
-                  </td>
-                  <td className="px-4 py-2.5 text-dsh-ink font-medium max-w-xs truncate" title={doc.title}>
-                    {doc.title}
+                <tr
+                  key={doc.id}
+                  onClick={() => router.push(`/admin/${doc.id}`)}
+                  className="hover:bg-dsh-surface transition-colors cursor-pointer"
+                >
+                  <td className="px-4 py-2.5 max-w-xs">
+                    <div className="font-semibold text-dsh-ink truncate" title={doc.filename}>
+                      {doc.filename}
+                    </div>
+                    <div className="text-[10px] text-dsh-muted truncate" title={doc.title}>
+                      {doc.title}
+                    </div>
                   </td>
                   <td className="px-4 py-2.5 text-dsh-muted whitespace-nowrap">{doc.issuing_authority || "—"}</td>
                   <td className="px-4 py-2.5 text-dsh-muted whitespace-nowrap">{doc.effective_from || "—"}</td>
                   <td className="px-4 py-2.5">
-                    <span
-                      className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                        doc.status === "effective"
-                          ? "bg-emerald-100 text-emerald-800"
-                          : "bg-red-100 text-red-800"
-                      }`}
-                    >
-                      {doc.status === "effective" ? "Còn hiệu lực" : "Hết hiệu lực"}
-                    </span>
+                    <StatusPill status={doc.status} stage={doc.stage} errorMessage={doc.error_message} />
                   </td>
                   <td className="px-4 py-2.5 text-right text-dsh-ink font-semibold tabular-nums">
-                    {doc.provisions_count}
+                    {doc.status === "FAILED" ? "-" : doc.chunk_count}
                   </td>
-                  <td className="px-4 py-2.5 text-right">
+                  <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                     {pendingDeleteId === doc.id ? (
                       <div className="flex items-center justify-end gap-1.5">
                         <span className="text-[10px] text-dsh-muted">Xác nhận xóa?</span>

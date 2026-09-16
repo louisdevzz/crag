@@ -317,7 +317,7 @@ class UniversalLegalPreprocessor:
             raise ValueError(f"Unsupported file format: {ext}")
 
         metadata = self.extract_metadata(raw_text, file_path)
-        provisions = parse_legal_document(raw_text, metadata)
+        provisions = parse_legal_document(raw_text, metadata, pages_data=pages_data)
 
         # Knowledge refinement legal strips
         all_strips = []

@@ -1,61 +1,84 @@
--- schema.sql: Legal CRAG Assistant Database Schema
--- Combines Legal Knowledge Base (Ch 3) and Session & Client Memory (Ch 5)
+-- schema.sql: Legal CRAG Assistant Database Schema (Chat + Admin architecture)
+-- Two domains sharing one SQLite file:
+--   1. Corpus / Ingestion (Admin):  documents, document_chunks, ingestion_jobs, legal_relations
+--   2. Session / Memory   (Chat):   clients, sessions, messages, memories
 
 PRAGMA foreign_keys = ON;
 
--- 1. Legal Documents Catalog
-CREATE TABLE IF NOT EXISTS legal_documents (
+-- 1. Documents: one row per uploaded/ingested legal document.
+--    status: UPLOADED | PROCESSING | READY | FAILED (ingestion lifecycle)
+--    legal_status: effective | expired | partially_expired (legal effectiveness,
+--    independent of ingestion status — extracted from document text, defaults to 'effective')
+--    Only documents with status = 'READY' are visible to the CRAG retrieval tools.
+CREATE TABLE IF NOT EXISTS documents (
     id TEXT PRIMARY KEY,
-    document_number TEXT UNIQUE NOT NULL,
+    filename TEXT NOT NULL,
+    document_number TEXT,
     title TEXT NOT NULL,
     document_type TEXT,
     issuing_authority TEXT,
     issued_at DATE,
     effective_from DATE,
     effective_to DATE,
-    status TEXT, -- 'effective', 'expired', 'partially_expired'
-    source_url TEXT NOT NULL,
-    retrieved_at TEXT
+    status TEXT NOT NULL DEFAULT 'UPLOADED',
+    legal_status TEXT NOT NULL DEFAULT 'effective',
+    source_url TEXT,
+    file_path TEXT,
+    file_type TEXT,
+    content_hash TEXT,
+    page_count INTEGER DEFAULT 0,
+    chunk_count INTEGER DEFAULT 0,
+    error_message TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. Provisions (Hierarchy: Chapter -> Article -> Clause -> Point)
-CREATE TABLE IF NOT EXISTS provisions (
+-- 2. Document Chunks: the indexed retrieval unit (Chương -> Điều -> Khoản), one row
+--    per legal-aware chunk produced by the CHUNKING stage of the ingestion pipeline.
+CREATE TABLE IF NOT EXISTS document_chunks (
     id TEXT PRIMARY KEY,
     document_id TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
     chapter TEXT,
     article TEXT,
     clause TEXT,
     point TEXT,
     heading TEXT,
-    text TEXT NOT NULL,
-    FOREIGN KEY(document_id) REFERENCES legal_documents(id) ON DELETE CASCADE
+    page_start INTEGER,
+    page_end INTEGER,
+    content TEXT NOT NULL,
+    token_count INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
 );
 
--- 3. Provision Versions over Time
-CREATE TABLE IF NOT EXISTS provision_versions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    provision_id TEXT NOT NULL,
-    valid_from DATE,
-    valid_to DATE,
-    text TEXT NOT NULL,
-    source_document_id TEXT,
-    FOREIGN KEY(provision_id) REFERENCES provisions(id) ON DELETE CASCADE
-);
-
--- 4. Legal Relations (Amends, Supplements, Replaces, Repeals, Guides)
+-- 3. Legal Relations (Amends, Supplements, Replaces, Repeals, Guides) between documents.
 CREATE TABLE IF NOT EXISTS legal_relations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_document_id TEXT NOT NULL,
     target_document_id TEXT NOT NULL,
-    source_provision_id TEXT,
-    target_provision_id TEXT,
+    source_chunk_id TEXT,
+    target_chunk_id TEXT,
     relation_type TEXT NOT NULL, -- 'amends', 'supplements', 'replaces', 'repeals', 'guides'
     note TEXT,
-    FOREIGN KEY(source_document_id) REFERENCES legal_documents(id) ON DELETE CASCADE,
-    FOREIGN KEY(target_document_id) REFERENCES legal_documents(id) ON DELETE CASCADE
+    FOREIGN KEY(source_document_id) REFERENCES documents(id) ON DELETE CASCADE,
+    FOREIGN KEY(target_document_id) REFERENCES documents(id) ON DELETE CASCADE
 );
 
--- 5. Clients (Anonymous Browser / Organization Identity)
+-- 4. Ingestion Jobs: one row per upload, tracks the staged async ingestion pipeline.
+--    stage: PARSING | OCR | STRUCTURING | CHUNKING | EMBEDDING | INDEXING | DONE
+CREATE TABLE IF NOT EXISTS ingestion_jobs (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    stage TEXT NOT NULL DEFAULT 'PARSING',
+    progress REAL NOT NULL DEFAULT 0.0,
+    error_message TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    finished_at TEXT,
+    FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
+);
+
+-- 5. Clients: anonymous browser/organization identity, owner of sessions and memories.
 CREATE TABLE IF NOT EXISTS clients (
     id TEXT PRIMARY KEY,
     memory_enabled INTEGER DEFAULT 1,
@@ -63,32 +86,35 @@ CREATE TABLE IF NOT EXISTS clients (
     last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
--- 6. Chat Sessions
-CREATE TABLE IF NOT EXISTS chat_sessions (
+-- 6. Chat Sessions.
+CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     client_id TEXT NOT NULL,
+    title TEXT,
     started_at TEXT DEFAULT CURRENT_TIMESTAMP,
     last_active_at TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE CASCADE
 );
 
--- 7. Query Logs (Episodic Memory / Audit Trail)
-CREATE TABLE IF NOT EXISTS query_logs (
+-- 7. Messages: canonical short-term conversational memory (Context Manager reads this
+--    to assemble multi-turn history; replaces the old write-only `query_logs` audit table).
+CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    client_id TEXT NOT NULL,
     session_id TEXT NOT NULL,
-    question TEXT NOT NULL,
-    answer TEXT,
+    client_id TEXT NOT NULL,
+    role TEXT NOT NULL, -- 'user' | 'assistant'
+    content TEXT NOT NULL,
     route TEXT,
     crag_action TEXT,
     source_type TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE CASCADE,
-    FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE CASCADE
 );
 
--- 8. Client Memories (Semantic Memory - Strictly Governed by Allow-list)
-CREATE TABLE IF NOT EXISTS client_memories (
+-- 8. Memories: long-term semantic profile memory, strictly governed by the allow-list
+--    in config.ALLOWED_MEMORY_KEYS. Never used as legal grounding, only entity resolution.
+CREATE TABLE IF NOT EXISTS memories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     client_id TEXT NOT NULL,
     memory_key TEXT NOT NULL,
@@ -100,10 +126,13 @@ CREATE TABLE IF NOT EXISTS client_memories (
 );
 
 -- Indexes for Fast Query Execution
-CREATE INDEX IF NOT EXISTS idx_doc_number ON legal_documents(document_number);
-CREATE INDEX IF NOT EXISTS idx_doc_status ON legal_documents(status);
-CREATE INDEX IF NOT EXISTS idx_provision_doc ON provisions(document_id);
+CREATE INDEX IF NOT EXISTS idx_doc_number ON documents(document_number);
+CREATE INDEX IF NOT EXISTS idx_doc_status ON documents(status);
+CREATE INDEX IF NOT EXISTS idx_doc_content_hash ON documents(content_hash);
+CREATE INDEX IF NOT EXISTS idx_chunk_document ON document_chunks(document_id);
 CREATE INDEX IF NOT EXISTS idx_relation_target ON legal_relations(target_document_id);
-CREATE INDEX IF NOT EXISTS idx_query_logs_client ON query_logs(client_id);
-CREATE INDEX IF NOT EXISTS idx_query_logs_session ON query_logs(session_id);
-CREATE INDEX IF NOT EXISTS idx_client_memories_client ON client_memories(client_id);
+CREATE INDEX IF NOT EXISTS idx_job_document ON ingestion_jobs(document_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_client ON sessions(client_id);
+CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_messages_client ON messages(client_id);
+CREATE INDEX IF NOT EXISTS idx_memories_client ON memories(client_id);

@@ -138,17 +138,21 @@ Lệnh trên thực hiện tự động:
 
 ## 6. Pipeline Nạp Dữ liệu (Ingestion Pipeline)
 
-Chạy lệnh nạp toàn bộ dữ liệu từ `data/` vào cơ sở dữ liệu SQLite và các hệ thống chỉ mục:
+Nạp văn bản qua Admin UI (`/admin`, kéo-thả PDF/DOCX/TXT) hoặc gọi thẳng API — cả hai đều kích hoạt cùng một pipeline chạy nền theo giai đoạn:
 
 ```bash
-python ingest.py
+curl -X POST http://localhost:8000/api/admin/documents/upload -F "file=@data/mydoc.pdf"
 ```
 
-### Quá trình thực thi bao gồm 4 bước:
-1. **Khởi tạo/Cập nhật Database SQLite (`~/.crag/app.db`):** Đảm bảo 8 bảng quan hệ và các index tìm kiếm nhanh sẵn sàng.
-2. **Nạp văn bản vào SQLite:** Đưa toàn bộ metadata văn bản (`legal_documents`) và các điều khoản (`provisions`).
-3. **Xây dựng chỉ mục từ khóa BM25:** Tokenize tiếng Việt và lưu file `data/processed/bm25_index.pkl`.
-4. **Xây dựng chỉ mục Dense Vector ChromaDB:** Sử dụng vectorizer chuẩn hóa L2 384 chiều (hoặc BGE-M3 khi có Ollama) nạp vào collection `legal_corpus_v1` tại `~/.crag/chroma`.
+Request trả về ngay `{document_id, status, job_id}`; theo dõi tiến trình qua `GET /api/admin/documents/{document_id}` (trường `job.stage`) hoặc trực tiếp trên Admin UI.
+
+### Các giai đoạn xử lý (mỗi giai đoạn cập nhật `ingestion_jobs.stage`):
+1. **PARSING** — Trích xuất text từ file (pymupdf/python-docx); phát hiện trang scan → chuyển giai đoạn **OCR** (Vision LLM) trước khi tiếp tục.
+2. **STRUCTURING** — `legal/parser.py` tách Chương → Điều → Khoản, gắn số trang cho từng provision.
+3. **CHUNKING** — Ghi từng provision thành một dòng `document_chunks` (đơn vị lập chỉ mục và duyệt trong Admin).
+4. **EMBEDDING / INDEXING** — Nhúng vector và cập nhật Chroma + rebuild BM25 (`data/processed/bm25_index.pkl`); ẩn hoàn toàn khỏi Admin UI.
+
+Chỉ văn bản có `status = READY` mới được CRAG truy hồi tới.
 ---
 
 ## 7. Chạy 5 Kịch bản Demo Kiểm chuẩn Bắt buộc
@@ -230,7 +234,7 @@ python eval/run_eval.py
 Hệ thống cung cấp giao diện Web người dùng bằng **Next.js (TypeScript)** theo đúng đặc tả của đồ án:
 
 ### Cách 1: Chạy Full Stack với FastAPI (Khuyến nghị)
-Sau khi Next.js được build tĩnh (`npm run build` xuất ra `frontend/out/`), FastAPI Gateway tự động host giao diện trực tiếp tại cổng 8000:
+Sau khi Next.js được build tĩnh (`pnpm run build` xuất ra `frontend/out/`), FastAPI Gateway tự động host giao diện trực tiếp tại cổng 8000:
 ```bash
 # Khởi chạy FastAPI server
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
@@ -246,7 +250,7 @@ uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 
 # Terminal 2: Chạy Next.js Dev Server
 cd frontend
-npm run dev    # hoặc bun run dev
+pnpm dev    # hoặc pnpm run dev
 ```
 - **Truy cập Next.js Dev Server:** `http://localhost:3000/`
 - Giao diện tự động kết nối với API backend tại cổng 8000.
@@ -293,4 +297,4 @@ curl -X POST http://localhost:8000/api/chat \
 - **Lỗi thiếu API Key của LLM Cloud:**  
   *Khắc phục:* Hệ thống có sẵn bộ suy diễn xác định *Deterministic Offline Synthesis*, bạn hoàn toàn có thể chạy test và demo đầy đủ mà không bắt buộc phải có API Key trả phí.
 - **Muốn nạp thêm văn bản mới:**  
-  Chỉ cần thả file PDF / DOCX mới vào thư mục `data/`, sau đó chạy lại `python ingest.py`. Bộ tiền xử lý sẽ tự động bóc tách cấu trúc và cập nhật cơ sở dữ liệu.
+  Tải lên qua Admin UI (`/admin`) hoặc `POST /api/admin/documents/upload` — pipeline nạp dữ liệu chạy nền tự động, không cần restart server hay chạy script thủ công.

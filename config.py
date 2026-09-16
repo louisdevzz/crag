@@ -23,7 +23,7 @@ class LLMConfig(BaseModel):
     """Configuration for Model Providers and Endpoints."""
     provider: str = Field(default_factory=lambda: os.getenv("LLM_PROVIDER", "groq").lower().strip())
     model: str = Field(default="")
-    temperature: float = Field(default_factory=lambda: float(os.getenv("LLM_TEMPERATURE", "0.0")))
+    temperature: float = Field(default_factory=lambda: float(os.getenv("LLM_TEMPERATURE", "0.3")))
     ollama_base_url: str = Field(default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"))
     openrouter_base_url: str = Field(default_factory=lambda: os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"))
     default_models: Dict[str, str] = Field(
@@ -33,6 +33,15 @@ class LLMConfig(BaseModel):
             "openrouter": "deepseek/deepseek-chat",
             "ollama": "qwen3.8:latest",
         }
+    )
+    # Provider Manager fallback order: tried in sequence after the primary
+    # `provider` fails to initialize/respond, skipping providers missing credentials.
+    fallback_providers: List[str] = Field(
+        default_factory=lambda: [
+            p.strip().lower()
+            for p in os.getenv("LLM_FALLBACK_PROVIDERS", "groq,openrouter,ollama").split(",")
+            if p.strip()
+        ]
     )
 
     def model_post_init(self, __context):
@@ -56,6 +65,10 @@ class CRAGConfig(BaseModel):
     t_low: float = Field(default_factory=lambda: float(os.getenv("T_LOW", "0.40")))
     t_high: float = Field(default_factory=lambda: float(os.getenv("T_HIGH", "0.80")))
     internal_strip_min: float = Field(default_factory=lambda: float(os.getenv("INTERNAL_STRIP_MIN", "0.40")))
+
+class SessionConfig(BaseModel):
+    """Chat Runtime: short-term conversational memory window."""
+    history_turns: int = Field(default_factory=lambda: int(os.getenv("HISTORY_TURNS", "4")))
 
 
 class SecurityConfig(BaseModel):
@@ -114,6 +127,7 @@ class PathConfig(BaseModel):
     eval_dir: Path = Field(default_factory=lambda: Path(__file__).resolve().parent / "eval")
     calibration_set_path: Path = Field(default_factory=lambda: Path(__file__).resolve().parent / "eval" / "calibration_set.json")
     test_set_path: Path = Field(default_factory=lambda: Path(__file__).resolve().parent / "eval" / "test_set.json")
+    upload_dir: Path = Field(default_factory=lambda: Path(os.getenv("UPLOAD_DIR", str(Path(__file__).resolve().parent / "data" / "uploads"))).expanduser().resolve())
 
 class AppConfig(BaseModel):
     """Unified Application Configuration Singleton."""
@@ -121,6 +135,7 @@ class AppConfig(BaseModel):
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     crag: CRAGConfig = Field(default_factory=CRAGConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
+    session: SessionConfig = Field(default_factory=SessionConfig)
     paths: PathConfig = Field(default_factory=PathConfig)
 
 
@@ -162,3 +177,7 @@ CHROMA_COLLECTION = CONFIG.paths.chroma_collection
 EVAL_DIR = CONFIG.paths.eval_dir
 CALIBRATION_SET_PATH = CONFIG.paths.calibration_set_path
 TEST_SET_PATH = CONFIG.paths.test_set_path
+UPLOAD_DIR = CONFIG.paths.upload_dir
+
+HISTORY_TURNS = CONFIG.session.history_turns
+LLM_FALLBACK_PROVIDERS = CONFIG.llm.fallback_providers

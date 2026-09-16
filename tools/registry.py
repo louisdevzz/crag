@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from tools.base import BaseLegalTool, ToolResult
-from tools.database import DatabaseTool
+from tools.crag_search import CragSearchTool
 from tools.web_search import ControlledWebSearchTool
 
 
@@ -20,8 +20,10 @@ class ToolRegistry:
         self._register_defaults()
 
     def _register_defaults(self):
-        """Register default core legal tools."""
-        self.register(DatabaseTool())
+        """Register the exactly-two agent-visible tools (Agentic CRAG architecture:
+        Tool Registry -> {CRAG Tool, Web Search}). Structured metadata lookup lives
+        INSIDE `crag_search` as a fast path, not as its own registered tool."""
+        self.register(CragSearchTool())
         self.register(ControlledWebSearchTool())
 
     def register(self, tool: BaseLegalTool) -> None:

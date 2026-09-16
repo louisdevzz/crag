@@ -35,6 +35,7 @@ interface WelcomeHeroProps {
   onAsOfDateChange: (date: string) => void;
   modelLabel: string;
   onOpenModelSettings: () => void;
+  onNewChat?: () => void;
 }
 
 export const WelcomeHero: React.FC<WelcomeHeroProps> = ({
@@ -44,6 +45,7 @@ export const WelcomeHero: React.FC<WelcomeHeroProps> = ({
   onAsOfDateChange,
   modelLabel,
   onOpenModelSettings,
+  onNewChat,
 }) => {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-6 px-4">
@@ -64,6 +66,7 @@ export const WelcomeHero: React.FC<WelcomeHeroProps> = ({
         onAsOfDateChange={onAsOfDateChange}
         modelLabel={modelLabel}
         onOpenModelSettings={onOpenModelSettings}
+        onNewChat={onNewChat}
         className="w-full"
       />
 

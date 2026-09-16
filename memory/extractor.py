@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from config import ALLOWED_MEMORY_KEYS
-from llm import get_chat_model
+from llm import get_chat_model_with_fallback as get_chat_model
 from memory.store import get_memory_store
 
 

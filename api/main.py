@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import hashlib
 import json as jsonlib
 import os
-import pickle
 import sqlite3
 import sys
 from pathlib import Path
@@ -18,12 +18,16 @@ from pydantic import BaseModel, Field
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent.graph import get_crag_app
-from agent.streaming import AnswerFieldExtractor, NODE_STAGE
-from config import CHROMA_DIR, CONFIG, DB_PATH, PROCESSED_DATA_DIR, RAW_DATA_DIR
-from ingest import add_document_to_indexes, delete_document_from_indexes, get_vectorstore
-from legal.preprocessor import UniversalLegalPreprocessor
+from agent.nodes import derive_route_and_action
+from agent.runtime import persist_turn, prepare_turn
+from agent.streaming import chunk_text_for_pseudo_stream, node_stage
+from config import CONFIG, DB_PATH, UPLOAD_DIR
+from ingestion import documents as documents_repo
+from ingestion import chunks as chunks_repo
+from ingestion import indexer
+from ingestion import jobs as jobs_repo
+from ingestion.worker import submit_ingestion
 from logging_config import get_logger
-from memory.extractor import extract_and_save_memories
 from memory.store import get_memory_store
 from monitoring import trace_config
 
@@ -106,29 +110,12 @@ def health_check() -> Dict[str, str]:
 def chat_endpoint(req: ChatRequest) -> ChatResponse:
     """Execute Legal CRAG Agent turn."""
     log.info("=== [TURN START] (non-streaming) query=%r client_id=%s ===", req.query[:100], req.client_id)
-    store = get_memory_store()
 
-    # 1. Resolve client and session
-    client_record = store.get_or_create_client(req.client_id)
-    client_id = client_record["id"]
-    session_id = store.create_session(client_id, req.session_id)
+    # 1-3. Resolve client/session, extract semantic memory, assemble Context Manager input.
+    client_id, session_id, state_input = prepare_turn(req.client_id, req.session_id, req.query, req.as_of_date)
 
-    # 2. Extract semantic memory attributes if present
-    extract_and_save_memories(client_id, req.query)
-
-    # 3. Retrieve formatted non-legal memory context for entity resolution
-    memory_context = store.format_memory_context(client_id)
-
-    # 4. Invoke LangGraph
+    # 4. Invoke the Agent Core (LangGraph).
     graph_app = get_crag_app()
-    state_input = {
-        "client_id": client_id,
-        "session_id": session_id,
-        "query": req.query,
-        "as_of_date": req.as_of_date,
-        "memory_context": memory_context,
-    }
-
     config = trace_config(thread_id=session_id, client_id=client_id)
     try:
         res = graph_app.invoke(state_input, config=config)
@@ -137,20 +124,16 @@ def chat_endpoint(req: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=500, detail=f"Agent execution failed: {str(e)}")
 
     route = res.get("route", "rag")
-    action = res.get("crag_action", "DATABASE" if route == "database" else "CORRECT")
+    action = res.get("crag_action", "CORRECT")
     generation = res.get("generation", {})
     citation_report = res.get("citation_report", {})
     evidence = res.get("evidence", [])
-
-    # 5. Log episodic turn to database
     answer_text = generation.get("answer", "")
-    store.log_query(
-        client_id=client_id,
-        session_id=session_id,
-        question=req.query,
-        answer=answer_text,
-        route=route,
-        crag_action=action,
+
+    # 5. Persist the turn (Context Manager's write side).
+    persist_turn(
+        client_id, session_id, req.query, answer_text,
+        route=route, crag_action=action,
         source_type=evidence[0].get("retrieval_source", "internal") if evidence else "none",
     )
     log.info("=== [TURN DONE] route=%s crag_action=%s evidence=%d answer_chars=%d ===", route, action, len(evidence), len(answer_text))
@@ -198,71 +181,69 @@ async def chat_stream_endpoint(req: ChatRequest) -> StreamingResponse:
     - `{"type": "error", "message": ...}` if the agent run raises.
     """
     log.info("=== [TURN START] (streaming) query=%r client_id=%s ===", req.query[:100], req.client_id)
-    store = get_memory_store()
 
-    client_record = store.get_or_create_client(req.client_id)
-    client_id = client_record["id"]
-    session_id = store.create_session(client_id, req.session_id)
-
-    extract_and_save_memories(client_id, req.query)
-    memory_context = store.format_memory_context(client_id)
-
+    client_id, session_id, state_input = prepare_turn(req.client_id, req.session_id, req.query, req.as_of_date)
     graph_app = get_crag_app()
-    state_input = {
-        "client_id": client_id,
-        "session_id": session_id,
-        "query": req.query,
-        "as_of_date": req.as_of_date,
-        "memory_context": memory_context,
-    }
     config = trace_config(thread_id=session_id, client_id=client_id)
 
     async def event_stream() -> AsyncIterator[str]:
-        final_state: Dict[str, Any] = dict(state_input)
-        extractor = AnswerFieldExtractor()
-        seen_nodes = set()
+        # Manual reducer accumulation: `stream_mode="updates"` yields each node's raw
+        # partial-update dict, not the graph's already-merged state (that view only exists
+        # via "values" mode or a final `.invoke()` return) — so `evidence`/`tool_trace`
+        # (both `operator.add` reducers on AgentState) must be accumulated here the same way
+        # LangGraph would internally, and `generation`/`citation_report` simply overwrite.
+        evidence: List[Dict[str, Any]] = []
+        tool_trace: List[Dict[str, Any]] = []
+        generation: Dict[str, Any] = {}
+        citation_report: Dict[str, Any] = {}
+        agent_call_index = 0
+        answer_streamed = False
+
         try:
             async for mode, chunk in graph_app.astream(
                 state_input, config=config, stream_mode=["updates", "custom"]
             ):
                 if mode == "updates":
                     for node_name, update in chunk.items():
-                        if update:
-                            final_state.update(update)
-                        if node_name not in seen_nodes:
-                            seen_nodes.add(node_name)
-                            log.info("[SSE] node=%s stage=%d", node_name, NODE_STAGE.get(node_name, 3))
-                            yield _sse({
-                                "type": "node",
-                                "node": node_name,
-                                "stage": NODE_STAGE.get(node_name, 3),
-                            })
+                        if not update:
+                            continue
+                        if "evidence" in update:
+                            evidence.extend(update["evidence"])
+                        if "tool_trace" in update:
+                            tool_trace.extend(update["tool_trace"])
+                        if "generation" in update:
+                            generation = update["generation"]
+                        if "citation_report" in update:
+                            citation_report = update["citation_report"]
+
+                        stage = node_stage(node_name, agent_call_index)
+                        if node_name == "agent":
+                            agent_call_index += 1
+                        if stage is not None:
+                            log.info("[SSE] node=%s stage=%d", node_name, stage)
+                            yield _sse({"type": "node", "node": node_name, "stage": stage})
                 elif mode == "custom":
-                    piece = chunk.get("raw_chunk", "") if isinstance(chunk, dict) else ""
-                    if not piece:
+                    if not isinstance(chunk, dict):
                         continue
-                    delta = extractor.feed(piece)
-                    if delta:
-                        yield _sse({"type": "token", "text": delta})
+                    if "tool_start" in chunk:
+                        yield _sse({"type": "tool_start", **chunk["tool_start"]})
+                    elif "tool_end" in chunk:
+                        yield _sse({"type": "tool_end", **chunk["tool_end"]})
+                    elif "final_answer" in chunk and not answer_streamed:
+                        answer_streamed = True
+                        for piece in chunk_text_for_pseudo_stream(chunk["final_answer"]):
+                            yield _sse({"type": "token", "text": piece})
         except Exception as e:
             log.error("=== [TURN FAILED] (streaming) error=%s ===", e)
             yield _sse({"type": "error", "message": f"Agent execution failed: {e}"})
             return
 
-        route = final_state.get("route", "rag")
-        action = final_state.get("crag_action", "DATABASE" if route == "database" else "CORRECT")
-        generation = final_state.get("generation", {})
-        citation_report = final_state.get("citation_report", {})
-        evidence = final_state.get("evidence", [])
+        route, action = derive_route_and_action(tool_trace)
         answer_text = generation.get("answer", "")
 
-        store.log_query(
-            client_id=client_id,
-            session_id=session_id,
-            question=req.query,
-            answer=answer_text,
-            route=route,
-            crag_action=action,
+        persist_turn(
+            client_id, session_id, req.query, answer_text,
+            route=route, crag_action=action,
             source_type=evidence[0].get("retrieval_source", "internal") if evidence else "none",
         )
         log.info("=== [TURN DONE] (streaming) route=%s crag_action=%s evidence=%d answer_chars=%d ===", route, action, len(evidence), len(answer_text))
@@ -330,7 +311,7 @@ def clear_memory(client_id: str) -> Dict[str, Any]:
 
 @app.get("/api/documents")
 def list_documents() -> List[Dict[str, Any]]:
-    """List indexed legal documents from database."""
+    """List documents currently visible to CRAG retrieval (status = READY)."""
     with sqlite3.connect(str(DB_PATH)) as con:
         con.row_factory = sqlite3.Row
         cur = con.cursor()
@@ -338,7 +319,8 @@ def list_documents() -> List[Dict[str, Any]]:
             """
             SELECT id, document_number, title, document_type, issuing_authority,
                    effective_from, status, source_url
-            FROM legal_documents
+            FROM documents
+            WHERE status = 'READY'
             ORDER BY id
             """
         )
@@ -346,100 +328,138 @@ def list_documents() -> List[Dict[str, Any]]:
 
 
 # ==============================================================================
-# ADMIN DATA CONSOLE — Corpus & Vector Store Ingestion Management (Layer 1)
+# ADMIN DATA CONSOLE — Document Ingestion Pipeline Management (Layer 1)
 # ==============================================================================
 ALLOWED_UPLOAD_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md"}
 
 
 class AdminDocumentSummary(BaseModel):
     id: str
-    document_number: str
+    filename: str
+    document_number: Optional[str] = None
     title: str
     document_type: Optional[str] = None
     issuing_authority: Optional[str] = None
     issued_at: Optional[str] = None
     effective_from: Optional[str] = None
     effective_to: Optional[str] = None
-    status: Optional[str] = None
-    source_url: Optional[str] = None
-    retrieved_at: Optional[str] = None
-    provisions_count: int = 0
+    status: str
+    page_count: int = 0
+    chunk_count: int = 0
+    stage: Optional[str] = None
+    error_message: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class IngestionJobInfo(BaseModel):
+    id: str
+    stage: str
+    progress: float
+    error_message: Optional[str] = None
+
+
+class AdminDocumentDetail(AdminDocumentSummary):
+    job: Optional[IngestionJobInfo] = None
+
+
+class ChunkItem(BaseModel):
+    id: str
+    chunk_index: int
+    chapter: Optional[str] = None
+    article: Optional[str] = None
+    clause: Optional[str] = None
+    point: Optional[str] = None
+    heading: Optional[str] = None
+    page_start: Optional[int] = None
+    page_end: Optional[int] = None
+    content: str
+    token_count: Optional[int] = None
 
 
 class AdminStats(BaseModel):
     total_documents: int
-    total_provisions: int
-    bm25_indexed: int
-    chroma_indexed: int
+    ready: int
+    processing: int
+    failed: int
 
 
-class IngestResult(BaseModel):
+class UploadResult(BaseModel):
     document_id: str
-    document_number: str
-    title: str
-    provisions_count: int
-    strips_count: int
-    corpus_total_provisions: int
+    status: str
+    job_id: str
 
 
 class DeleteResult(BaseModel):
     document_id: str
-    document_number: str
-    deleted_provisions: int
-    corpus_total_provisions: int
+    filename: str
+    deleted_chunks: int
+
+
+def _with_stage(doc: Dict[str, Any]) -> Dict[str, Any]:
+    job = jobs_repo.get_job_for_document(doc["id"])
+    doc = dict(doc)
+    doc["stage"] = job["stage"] if job and doc["status"] == "PROCESSING" else None
+    return doc
 
 
 @app.get("/api/admin/documents", response_model=List[AdminDocumentSummary])
 def admin_list_documents() -> List[Dict[str, Any]]:
-    """List every indexed legal document with its provision count for the Admin console."""
-    with sqlite3.connect(str(DB_PATH)) as con:
-        con.row_factory = sqlite3.Row
-        cur = con.cursor()
-        cur.execute(
-            """
-            SELECT d.*, COUNT(p.id) AS provisions_count
-            FROM legal_documents d
-            LEFT JOIN provisions p ON p.document_id = d.id
-            GROUP BY d.id
-            ORDER BY d.retrieved_at DESC
-            """
-        )
-        return [dict(r) for r in cur.fetchall()]
+    """List every document in the corpus with its live ingestion status for the Admin console."""
+    return [_with_stage(d) for d in documents_repo.list_documents()]
+
+
+@app.get("/api/admin/documents/{document_id}", response_model=AdminDocumentDetail)
+def admin_document_detail(document_id: str) -> Dict[str, Any]:
+    """Document metadata plus its latest ingestion job (for the processing checklist)."""
+    doc = documents_repo.get_document(document_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
+    job = jobs_repo.get_job_for_document(document_id)
+    result = dict(doc)
+    result["stage"] = job["stage"] if job and doc["status"] == "PROCESSING" else None
+    result["job"] = job
+    return result
+
+
+@app.get("/api/admin/documents/{document_id}/chunks", response_model=List[ChunkItem])
+def admin_document_chunks(document_id: str) -> List[Dict[str, Any]]:
+    """Chunk browser for one document (Admin's window into what was actually indexed)."""
+    if documents_repo.get_document(document_id) is None:
+        raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
+    return chunks_repo.list_chunks(document_id)
 
 
 @app.get("/api/admin/stats", response_model=AdminStats)
 def admin_stats() -> Dict[str, Any]:
-    """Report corpus ingestion coverage across SQLite, the BM25 index, and Chroma."""
-    with sqlite3.connect(str(DB_PATH)) as con:
-        cur = con.cursor()
-        cur.execute("SELECT COUNT(*) FROM legal_documents")
-        total_documents = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM provisions")
-        total_provisions = cur.fetchone()[0]
-
-    bm25_indexed = 0
-    bm25_path = PROCESSED_DATA_DIR / "bm25_index.pkl"
-    if bm25_path.exists():
-        with open(bm25_path, "rb") as f:
-            bm25_indexed = pickle.load(f).get("count", 0)
-
-    chroma_indexed = 0
-    try:
-        chroma_indexed = get_vectorstore(CHROMA_DIR)._collection.count()
-    except Exception:
-        chroma_indexed = 0
-
+    """Report corpus ingestion coverage without exposing embedding/index internals."""
+    docs = documents_repo.list_documents()
     return {
-        "total_documents": total_documents,
-        "total_provisions": total_provisions,
-        "bm25_indexed": bm25_indexed,
-        "chroma_indexed": chroma_indexed,
+        "total_documents": len(docs),
+        "ready": sum(1 for d in docs if d["status"] == "READY"),
+        "processing": sum(1 for d in docs if d["status"] in ("UPLOADED", "PROCESSING")),
+        "failed": sum(1 for d in docs if d["status"] == "FAILED"),
     }
 
 
-@app.post("/api/admin/documents/upload", response_model=IngestResult)
-async def admin_upload_document(file: UploadFile = File(...)) -> Dict[str, Any]:
-    """Upload a legal document file; preprocess and ingest it into SQLite, BM25, and Chroma."""
+def _delete_document_fully(document_id: str) -> Dict[str, Any]:
+    """Cascade-delete a document: SQLite row (+ its chunks/jobs via FK), its Chroma
+    vectors, and rebuild the BM25 index so it never lingers in either index."""
+    indexer.remove_document_from_chroma(document_id)
+    doc = documents_repo.delete_document(document_id)
+    corpus_total = indexer.rebuild_bm25_index()
+    return {
+        "document_id": document_id,
+        "filename": doc["filename"],
+        "deleted_chunks": doc.get("chunk_count", 0),
+        "corpus_total_chunks": corpus_total,
+    }
+
+
+@app.post("/api/admin/documents/upload", response_model=UploadResult)
+async def admin_upload_document(file: UploadFile = File(...), replace: bool = False) -> Dict[str, Any]:
+    """Upload a legal document; ingestion runs asynchronously on a background worker
+    (see `ingestion.pipeline`). Poll `GET /api/admin/documents/{id}` for live progress."""
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_UPLOAD_EXTENSIONS:
         raise HTTPException(
@@ -447,30 +467,46 @@ async def admin_upload_document(file: UploadFile = File(...)) -> Dict[str, Any]:
             detail=f"Unsupported file type '{ext}'. Allowed: {sorted(ALLOWED_UPLOAD_EXTENSIONS)}",
         )
 
-    RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    dest_path = RAW_DATA_DIR / file.filename
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    content_hash = hashlib.sha256(content).hexdigest()
+
+    existing = documents_repo.find_by_content_hash(content_hash)
+    if existing and existing["status"] != "FAILED" and not replace:
+        raise HTTPException(
+            status_code=409,
+            detail=f"File này đã tồn tại: '{existing['filename']}' (status={existing['status']}). "
+                   f"Gửi lại với replace=true để thay thế.",
+        )
+    if existing:
+        _delete_document_fully(existing["id"])
+
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    doc_id = documents_repo.new_document_id()
+    dest_path = UPLOAD_DIR / f"{doc_id}{ext}"
     dest_path.write_bytes(content)
 
-    try:
-        preprocessor = UniversalLegalPreprocessor(enable_vision_ocr=False)
-        result = preprocessor.process_file(dest_path)
-        ingest_result = add_document_to_indexes(result)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ingestion failed: {e}") from e
+    doc = documents_repo.create_document(
+        filename=file.filename,
+        file_path=str(dest_path),
+        file_type=ext,
+        content_hash=content_hash,
+        document_id=doc_id,
+    )
+    job = jobs_repo.create_job(doc["id"])
+    submit_ingestion(doc["id"])
 
-    return ingest_result
+    return {"document_id": doc["id"], "status": doc["status"], "job_id": job["id"]}
 
 
 @app.delete("/api/admin/documents/{document_id}", response_model=DeleteResult)
 def admin_delete_document(document_id: str) -> Dict[str, Any]:
-    """Remove a document and its provisions from SQLite, BM25, and Chroma."""
+    """Remove a document and its chunks from SQLite, BM25, and Chroma."""
     try:
-        return delete_document_from_indexes(document_id)
+        return _delete_document_fully(document_id)
     except KeyError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        raise HTTPException(status_code=404, detail=e.args[0] if e.args else str(e)) from e
 
 
 # ==============================================================================

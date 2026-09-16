@@ -90,12 +90,12 @@ export default function HomePage() {
     };
 
     const assistantId = "ast_" + Date.now();
+    const turnStart = Date.now();
     let hasToken = false;
 
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
     setLiveStage(0);
-
     await streamChatMessage(
       { query, clientId, sessionId, asOfDate },
       {
@@ -130,6 +130,8 @@ export default function HomePage() {
             content: payload.generation.answer,
             timestamp: new Date().toISOString(),
             isStreaming: false,
+            durationMs: Date.now() - turnStart,
+            claims: payload.generation.claims,
             citationReport: payload.citation_report,
             trace: {
               route: payload.route,
@@ -209,6 +211,7 @@ export default function HomePage() {
     onAsOfDateChange: setAsOfDate,
     modelLabel,
     onOpenModelSettings: () => setIsSettingsOpen(true),
+    onNewChat: handleNewChat,
   };
 
   return (

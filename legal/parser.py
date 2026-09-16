@@ -31,15 +31,22 @@ POINT_PATTERN = re.compile(
 def parse_legal_document(
     raw_text: str,
     doc_metadata: Dict[str, Any],
+    pages_data: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """Parse raw Vietnamese legal document text into structured provisions.
 
     Parameters
     ----------
     raw_text : str
-        Full text or section text of the legal document.
+        Full text or section text of the legal document. Used verbatim when
+        `pages_data` is not supplied.
     doc_metadata : dict
         Document metadata (id, document_number, title, etc.)
+    pages_data : list of dict, optional
+        Per-page records `{"page_number": int, "text": str, ...}` as returned by
+        `UniversalLegalPreprocessor.extract_text_from_pdf`. When supplied, each
+        emitted provision is tagged with the page range its source lines came
+        from (`page_start`/`page_end`); otherwise both are `None`.
 
     Returns
     -------
@@ -50,7 +57,17 @@ def parse_legal_document(
     doc_number = doc_metadata.get("document_number", "")
     doc_title = doc_metadata.get("title", "")
 
-    lines = raw_text.split("\n")
+    if pages_data:
+        lines: List[str] = []
+        line_pages: List[Optional[int]] = []
+        for page in pages_data:
+            page_lines = page.get("text", "").split("\n")
+            lines.extend(page_lines)
+            line_pages.extend([page.get("page_number")] * len(page_lines))
+    else:
+        lines = raw_text.split("\n")
+        line_pages = [None] * len(lines)
+
     provisions: List[Dict[str, Any]] = []
     seen_ids: Dict[str, int] = {}
 
@@ -64,15 +81,21 @@ def parse_legal_document(
     current_article = ""
     current_article_title = ""
     current_article_lines: List[str] = []
+    current_article_page_start: Optional[int] = None
+    current_article_page_end: Optional[int] = None
 
     def flush_article():
-        nonlocal current_article_lines
+        nonlocal current_article_lines, current_article_page_start, current_article_page_end
         if not current_article or not current_article_lines:
+            current_article_page_start = None
+            current_article_page_end = None
             return
 
         article_text = "\n".join(current_article_lines).strip()
         art_match = re.search(r"\d+", current_article)
         art_num = art_match.group(0) if art_match else current_article
+        page_start = current_article_page_start
+        page_end = current_article_page_end
 
         # Decompose into clauses if present
         clauses = split_clauses(article_text)
@@ -97,6 +120,8 @@ def parse_legal_document(
                     "text": c_text,
                     "locator": prov_id,
                     "provenance": breadcrumb,
+                    "page_start": page_start,
+                    "page_end": page_end,
                     "metadata": {
                         "document_id": doc_id,
                         "document_number": doc_number,
@@ -123,6 +148,8 @@ def parse_legal_document(
                 "text": article_text,
                 "locator": prov_id,
                 "provenance": breadcrumb,
+                "page_start": page_start,
+                "page_end": page_end,
                 "metadata": {
                     "document_id": doc_id,
                     "document_number": doc_number,
@@ -135,8 +162,10 @@ def parse_legal_document(
             })
 
         current_article_lines = []
+        current_article_page_start = None
+        current_article_page_end = None
 
-    for line in lines:
+    for line, page_num in zip(lines, line_pages):
         stripped = line.strip()
         if not stripped:
             continue
@@ -155,10 +184,16 @@ def parse_legal_document(
             flush_article()
             current_article = art_match.group(1).strip()
             current_article_title = art_match.group(2).strip()
+            current_article_page_start = page_num
+            current_article_page_end = page_num
             continue
 
         if current_article:
             current_article_lines.append(stripped)
+            if page_num is not None:
+                if current_article_page_start is None:
+                    current_article_page_start = page_num
+                current_article_page_end = page_num
 
     # Flush last article
     flush_article()

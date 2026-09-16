@@ -1,53 +1,57 @@
 %%{init: {'theme': 'default', 'themeVariables': {'background': '#FFFFFF', 'fontFamily': 'sans-serif', 'fontSize': '14px'}}}%%
 flowchart TD
-    %% TẦNG 1: NGƯỜI DÙNG & GIAO DIỆN
-    USER([Người Dùng / Trình Duyệt]):::cUser -->|Gửi câu hỏi + client_id| API[Cổng API Gateway / FastAPI]:::cApi
+    %% ============ CHAT SIDE ============
+    USER([Người Dùng]):::cUser -->|Câu hỏi + client_id/session_id| CHATPAGE[Chat Page]:::cApi
+    CHATPAGE --> RUNTIME[Agent Runtime<br/>agent/runtime.py]:::cApi
 
-    %% TẦNG MEMORY
-    API <-->|Đọc & Lưu bối cảnh doanh nghiệp| MEM[(Bộ Nhớ Phiên<br/>Session Memory)]:::cMem
-    API -->|Chuyển câu hỏi + bối cảnh| ROUTER{Bộ Điều Hướng<br/>Query Router}:::cRouter
+    RUNTIME --> CTXMGR[Context Manager<br/>agent/context.py]:::cMem
+    CTXMGR <-->|Đọc/ghi messages, memories| SQLITE[(SQLite<br/>sessions · messages · memories<br/>documents · document_chunks · ingestion_jobs)]:::cMem
+    CTXMGR -->|conversation_history + memory_context| CORE
 
-    %% PHÂN LUỒNG ROUTER
-    ROUTER -->|Tra cứu số hiệu, hiệu lực| DB[Công Cụ CSDL<br/>SQLite Database]:::cDb
-    ROUTER -->|Tra cứu quy định pháp luật| RETRIEVE[Truy Hồi Lai<br/>Dense Chroma + BM25]:::cRetrieve
+    subgraph REACT["Agent Core — ReAct Loop (agent/graph.py) — no router node"]
+        direction TB
+        CORE[Agent Node<br/>LLM + Provider Manager]:::cRouter
+        CORE -->|tool_calls?| DECIDE{Model called<br/>a tool?}:::cRouter
+        DECIDE -->|yes| TOOLS[Tool Node<br/>Tool Registry dispatch]:::cDb
+        TOOLS -->|tool results appended| CORE
+        DECIDE -->|no: final answer| VALIDATE
+    end
 
-    %% NHÁNH CSDL
-    DB --> VALIDATE
+    TOOLS -->|crag_search| CRAGTOOL[CRAG Tool<br/>tools/crag_search.py]:::cRetrieve
+    TOOLS -->|controlled_web_search| WEBTOOL[Web Search Tool<br/>tools/web_search.py]:::cAmb
 
-    %% TRUY HỒI & ĐÁNH GIÁ
-    RETRIEVE --> RRF[Hợp Nhất Xếp Hạng<br/>RRF Fusion k=60]:::cRetrieve
-    RRF --> EVAL{Đánh Giá Bằng Chứng<br/>Reranker Sigmoid}:::cEval
+    CRAGTOOL --> RETRIEVE[Hybrid Retrieval<br/>Dense Chroma + BM25]:::cRetrieve
+    RETRIEVE --> RRF[RRF Fusion k=60]:::cRetrieve
+    RRF --> EVAL{Evaluator<br/>Reranker Sigmoid}:::cEval
+    EVAL -->|CORRECT / AMBIGUOUS / INCORRECT +<br/>guidance for the model| REFINE[Refine Internal<br/>legal strips]:::cCorrect
+    REFINE -->|evidence + crag_action| TOOLS
 
-    %% 3 NHÁNH CRAG
-    EVAL -->|Điểm >= 0.80| BR_CORRECT[ĐỦ BẰNG CHỨNG<br/>Nhánh Đúng]:::cCorrect
-    EVAL -->|0.40 <= Điểm < 0.80| BR_AMB[MỘT PHẦN BẰNG CHỨNG<br/>Nhánh Chưa Rõ]:::cAmb
-    EVAL -->|Điểm <= 0.40| BR_INC[THIẾU BẰNG CHỨNG<br/>Nhánh Sai]:::cInc
+    WEBTOOL --> SEARCH[Controlled Web Search<br/>official domains only]:::cAmb
+    SEARCH --> REFINEEXT[Refine External]:::cAmb
+    REFINEEXT -->|evidence| TOOLS
 
-    %% XỬ LÝ NHÁNH CORRECT
-    BR_CORRECT --> REFINE[Tinh Lọc Điều Khoản<br/>Internal Legal Strips]:::cCorrect
-    REFINE --> GEN
+    VALIDATE{Citation Validator}:::cVal --> ANSWER([Answer + Citations]):::cSuccess
+    ANSWER --> PERSIST[Persist Turn<br/>agent/runtime.py]:::cApi
+    PERSIST -->|user + assistant messages| SQLITE
 
-    %% XỬ LÝ NHÁNH AMBIGUOUS
-    BR_AMB --> REFINE_AMB[Tinh Lọc Nội Bộ]:::cAmb
-    BR_AMB --> REWRITE_AMB[Viết Lại Truy Vấn]:::cAmb
-    REWRITE_AMB --> WEB_AMB[Tìm Kiếm Nguồn Ngoài<br/>Cổng Thông Tin Nhà Nước]:::cAmb
-    WEB_AMB --> MERGE[Hợp Nhất Bằng Chứng<br/>Ưu Tiên Nguồn Nội Bộ]:::cAmb
-    REFINE_AMB --> MERGE
-    MERGE --> GEN
+    %% ============ ADMIN / INGESTION SIDE ============
+    ADMIN([Admin]):::cUser -->|Upload PDF/DOCX/TXT| ADMINPAGE[Admin Page]:::cApi
+    ADMINPAGE --> INGESTAPI[Ingestion API<br/>api/main.py]:::cApi
+    INGESTAPI -->|create documents + ingestion_jobs row| SQLITE
+    INGESTAPI --> WORKER[Background Worker<br/>ingestion/worker.py]:::cRetrieve
 
-    %% XỬ LÝ NHÁNH INCORRECT
-    BR_INC --> REWRITE_INC[Viết Lại Truy Vấn]:::cInc
-    REWRITE_INC --> WEB_INC[Tìm Kiếm Nguồn Ngoài<br/>vbpl.vn, chinhphu.vn]:::cInc
-    WEB_INC --> GEN
+    WORKER --> P_PARSE[PARSING]:::cCorrect
+    P_PARSE -->|scanned pages?| P_OCR[OCR — Vision LLM]:::cAmb
+    P_PARSE --> P_STRUCT[STRUCTURING<br/>legal/parser.py]:::cCorrect
+    P_OCR --> P_STRUCT
+    P_STRUCT --> P_CHUNK[CHUNKING<br/>document_chunks]:::cCorrect
+    P_CHUNK --> P_EMBED[EMBEDDING — hidden from Admin]:::cGen
+    P_EMBED --> P_INDEX[INDEXING<br/>Chroma + BM25]:::cGen
+    P_INDEX --> READY([status = READY]):::cSuccess
+    READY -.->|only READY docs visible to| RETRIEVE
+    P_CHUNK --> SQLITE
+    P_INDEX --> SQLITE
 
-    %% SINH LỜI GIẢI & KIỂM ĐỊNH
-    GEN[Bộ Sinh Lời Giải<br/>Structured JSON Schema]:::cGen --> VALIDATE{Kiểm Định Trích Dẫn<br/>Citation Validator}:::cVal
-
-    %% KẾT QUẢ CUỐI CÙNG
-    VALIDATE -->|Trích dẫn đúng & Còn hiệu lực| SUCCESS([Câu Trả Lời Hoàn Chỉnh<br/>Kèm Căn Cứ Pháp Lý]):::cSuccess
-    VALIDATE -->|Trích dẫn sai hoặc hết hiệu lực| FAIL([Chặn Ảo Giác<br/>Cảnh Báo Vi Phạm]):::cFail
-
-    %% ĐỊNH NGHĨA MÀU SẮC VÀ PHONG CÁCH
     classDef cUser fill:#EBF8FF,stroke:#3182CE,stroke-width:2px,color:#2B6CB0;
     classDef cApi fill:#FAF5FF,stroke:#805AD5,stroke-width:2px,color:#553C9A;
     classDef cMem fill:#FEFCBF,stroke:#D69E2E,stroke-width:2px,color:#744210;

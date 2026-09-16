@@ -59,6 +59,7 @@ Hệ thống áp dụng kiến trúc 3 tầng tách biệt (*Separation of Conce
 |---|---|---|---|
 | **Ngôn ngữ Nền tảng** | Python | `>=3.12.3` | Nền tảng cho toàn bộ backend, AI agent, và data pipeline. |
 | **Node.js Runtime** | Node.js | `22.23.2` | Runtime chạy Next.js frontend, quản lý phiên bản qua `.prototools`. |
+| **Quản lý Gói Frontend** | `pnpm` | `12.4.2` | Quản lý gói frontend hiệu năng cao, tối ưu lưu trữ và tốc độ cài đặt qua `.prototools`. |
 | **Điều phối Tác tử** | `langgraph` | `>=0.2.0` | Quản lý đồ thị trạng thái có chu trình, rẽ nhánh điều kiện và checkpointing. |
 | **Khung Tác tử** | `langchain`, `langchain-core` | `>=0.3.0` | Quản lý prompts, message schemas, runnable chains và model interfaces. |
 | **LLM Cloud (Free Tier)** | `groq` SDK + `langchain-groq` | `0.37.1` / `1.1.3` | Suy luận LPU siêu tốc; model mặc định `qwen/qwen3.8-27b` (miễn phí, hỗ trợ tool use, JSON mode). |

@@ -10,16 +10,16 @@
 Hệ thống được thiết kế theo **Kiến trúc 3 Layer Tách biệt**:
 
 - **Layer 1 — Interface & API:** Giao diện dòng lệnh chuyên nghiệp (CLI) và hạ tầng RESTful API (FastAPI) hỗ trợ trả lời, bảng trích dẫn citation xác định, quản lý phiên và hồ sơ client.
-- **Layer 2 — Agent & Correction:** Đồ thị trạng thái **LangGraph** điều phối toàn bộ workflow: Router phân luồng, Retrieval Evaluator chấm điểm relevance chuẩn hóa Sigmoid, 3 nhánh xử lý CRAG cốt lõi, Generator và Citation Validator.
+- **Layer 2 — Agent Core (ReAct):** Vòng lặp tác tử `agent` ⇄ `tools` trên **LangGraph** — không có node Router phân loại trước; mô hình tự quyết định gọi `crag_search` (Hybrid Retrieval + Rerank + Evaluator Sigmoid + Refine) và/hoặc `controlled_web_search` qua Tool Registry, rồi sinh câu trả lời qua Citation Validator.
 - **Layer 3 — Knowledge & Data:** SQLite (`~/.crag/app.db`) quản lý metadata văn bản và memory; ChromaDB (`~/.crag/chroma`) quản lý Dense Vector Index; rank-bm25 quản lý Lexical Index; Reranker tính relevance; Controlled Web Search lọc tên miền công quyền chính thống. Toàn bộ cơ sở dữ liệu và dữ liệu runtime được lưu trữ an toàn tại `~/.crag/` thay vì đặt trong repository.
 ![Sơ đồ Toàn diện Luồng Hoạt động Legal CRAG Assistant](docs/images/workflow.png)
 
 Hệ thống tuân thủ toàn diện các nguyên lý chuẩn của **[LangGraph Overview](https://docs.langchain.com/oss/python/langgraph/overview)**:
 - **State Schema (`AgentState`):** Shared scratchpad truyền dữ liệu giữa các node dạng TypedDict.
 - **Ranh giới Formal Graph:** Điểm vào từ `START` và kết thúc tại `END`.
-- **Node Functions:** 11 node biến đổi trạng thái độc lập (`agent/nodes.py`).
-- **Conditional Edges:** Rẽ nhánh Router và 3 nhánh tự hiệu chỉnh CRAG (Correct, Ambiguous, Incorrect).
-- **Persistence Checkpointing:** Tích hợp `MemorySaver` lưu vết hội thoại đa lượt qua `thread_id`.
+- **Node Functions:** `agent`, `tools`, `cite_validate` (`agent/nodes.py`) — không có node Router riêng, mô hình tự quyết định qua tool-calling.
+- **Conditional Edge:** `agent` → có `tool_calls`? → `tools` (lặp lại) : → `cite_validate`.
+- **Context Manager, không phải Checkpointer:** Đa lượt hội thoại được lắp ráp tường minh từ SQLite (`agent/context.py`) trước mỗi lần `invoke()` — không dùng `MemorySaver` trong RAM, tránh trạng thái "hai nguồn sự thật" giữa checkpointer và lịch sử bền vững.
 
 ---
 
@@ -36,8 +36,8 @@ Hệ thống tuân thủ toàn diện các nguyên lý chuẩn của **[LangGrap
 3. **Kiểm định Trích dẫn Xác định (Deterministic Citation Validator):**
    - Chặn đứng ảo giác: Mọi khẳng định pháp lý phải có `source_id` tồn tại trong tập bằng chứng thực tế.
    - Kiểm tra hiệu lực thời gian theo ngày tham chiếu `as_of_date` (phát hiện văn bản đã hết hiệu lực).
-4. **Quản lý Session Memory 3 Tầng An toàn:**
-   - Phân định rõ: Working Memory, Episodic Memory (`query_logs`), Semantic Profile (`client_memories`).
+4. **Agent Runtime với Context Manager (Session, History, Memory):**
+   - Phân định rõ: History ngắn hạn từ bảng `messages` (đọc lại qua `agent/context.py` để trả lời câu hỏi nối tiếp), Semantic Profile dài hạn ở bảng `memories`.
    - Kiểm soát nghiêm ngặt bằng danh mục cho phép `ALLOWED_MEMORY_KEYS`.
    - **Cam kết an toàn tuyệt đối:** Memory chỉ dùng để giải tham chiếu thực thể, không bao giờ dùng làm căn cứ pháp lý; đạt chỉ số **Cross-client Contamination = 0**.
 
@@ -81,7 +81,7 @@ ai-agent-crag/
 ├── schema.sql                           # Schema 8 bảng SQLite
 ├── init_system.py                       # Khởi tạo toàn diện hệ thống (~/.crag/, SQLite, Chroma, chẩn đoán)
 ├── create_db.py                         # Khởi tạo database SQLite tại ~/.crag/app.db
-├── ingest.py                            # Pipeline nạp dữ liệu vào SQLite, BM25, Chroma
+├── ingestion/                           # Pipeline nạp dữ liệu theo giai đoạn (parse/OCR/structure/chunk/embed/index)
 ├── main.py                              # CLI tương tác & Demo 5 kịch bản bắt buộc (--init, --demo)
 └── docs/
     └── SETUP_AND_RUN.md                 # Hướng dẫn chi tiết cài đặt và vận hành
@@ -125,9 +125,10 @@ Tải trọng số mô hình từ Hugging Face Hub về bộ đệm cục bộ v
 python scripts/pull_models.py
 ```
 
-### Bước 5: Nạp dữ liệu vào Cơ sở Dữ liệu & Vector Store
+### Bước 5: Nạp Văn bản Pháp lý
+Khởi động API (`uvicorn api.main:app`) rồi mở trang Admin (`/admin`) để tải lên PDF/DOCX/TXT — pipeline nạp dữ liệu chạy nền theo giai đoạn (xem `docs/WORKFLOW.md` mục 4). Hoặc gọi trực tiếp API:
 ```bash
-python ingest.py
+curl -X POST http://localhost:8000/api/admin/documents/upload -F "file=@duong/dan/van_ban.pdf"
 ```
 
 ### Bước 6: Chạy 5 Kịch bản Demo Kiểm chuẩn (Table 3.2)

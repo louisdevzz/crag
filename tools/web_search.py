@@ -23,16 +23,26 @@ warnings.filterwarnings("ignore", category=RuntimeWarning, module="duckduckgo_se
 
 class ControlledWebSearchInput(BaseModel):
     """Input argument schema for controlled legal web search."""
-    query: str = Field(..., min_length=2, description="Optimized legal search query")
+    query: str = Field(..., min_length=2, description="Câu tìm kiếm cụ thể, súc tích cho cổng thông tin pháp luật nhà nước (do bạn tự soạn)")
     max_results: int = Field(default=4, ge=1, le=10, description="Max external candidates to retrieve")
     allowed_domains: Optional[List[str]] = Field(default=None, description="Domain allow-list overrides")
 
 
 class ControlledWebSearchTool(BaseLegalTool):
-    """Tool for querying official Vietnamese government legal portals."""
+    """Tool for querying official Vietnamese government legal portals.
+
+    The calling agent composes `query` itself (no separate query-rewrite step) —
+    it already has the user's question, conversation history, and any prior
+    `crag_search` evidence, so it is best placed to phrase a precise search string.
+    """
 
     name: str = "controlled_web_search"
-    description: str = "Tìm kiếm có kiểm soát trên các cổng thông tin pháp luật chính thống của nhà nước (vbpl.vn, chinhphu.vn, moj.gov.vn...)."
+    description: str = (
+        "Tìm kiếm có kiểm soát trên các cổng thông tin pháp luật chính thống của nhà nước "
+        "(vbpl.vn, chinhphu.vn, moj.gov.vn...). Dùng khi crag_search trả về bằng chứng nội bộ "
+        "không đủ (AMBIGUOUS/INCORRECT). Hãy tự soạn một câu truy vấn tìm kiếm cụ thể, không "
+        "chép nguyên văn câu hỏi của người dùng."
+    )
     args_schema = ControlledWebSearchInput
 
     def __init__(self, allowed_domains: Optional[Set[str]] = None):
@@ -43,11 +53,14 @@ class ControlledWebSearchTool(BaseLegalTool):
         query: str,
         max_results: int = 4,
         allowed_domains: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
-        """Search and fetch verified legal web evidence."""
+    ) -> Dict[str, Any]:
+        """Search, fetch, and refine verified legal web evidence into ready-to-cite strips."""
         domains = set(allowed_domains) if allowed_domains else self.allowed_domains
         candidates = search_official_web(query, max_results=max_results, allowed_domains=domains)
-        return fetch_external_evidence(candidates, max_chars=1500)
+        raw_evidence = fetch_external_evidence(candidates, max_chars=1500)
+        from retrieval.refine import refine_external
+        refined = refine_external(query, raw_evidence)
+        return {"evidence": refined, "candidates_found": len(candidates)}
 
 
 def is_allowed_source(url: str, allowed_domains: Optional[Set[str]] = None) -> bool:

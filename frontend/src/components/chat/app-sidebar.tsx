@@ -1,21 +1,24 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Briefcase,
   Building2,
+  Database,
   Folder,
   HeartPulse,
+  MessageSquare,
   MessageSquarePlus,
+  PanelLeft,
   Receipt,
+  Scale,
   Search,
-  Settings,
   Sparkles,
 } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -25,6 +28,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
+  SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import {
   CommandDialog,
@@ -34,11 +39,10 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { ConversationSummary, groupConversationsByDay } from "@/lib/history";
 import { groupDocumentsByCategory } from "@/lib/categories";
 import { LegalDocument } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   "Bảo hiểm xã hội": HeartPulse,
@@ -56,7 +60,7 @@ interface AppSidebarProps {
   onNewChat: () => void;
   onSelectConversation: (sessionId: string) => void;
   onSelectPrompt: (prompt: string) => void;
-  onOpenSettings: () => void;
+  onOpenSettings?: () => void;
 }
 
 export const AppSidebar: React.FC<AppSidebarProps> = ({
@@ -72,6 +76,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
 }) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const { state } = useSidebar();
+  const isCollapsed = state === "collapsed";
 
   const categoryGroups = useMemo(() => groupDocumentsByCategory(documents), [documents]);
   const dayGroups = useMemo(() => groupConversationsByDay(conversations), [conversations]);
@@ -91,50 +97,118 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
     setQuery("");
   };
 
-  const clientLabel = clientId ? clientId.replace(/^client_/, "").slice(0, 8) : "…";
-
   return (
     <>
-      <Sidebar collapsible="icon" className="border-sidebar-border">
-        <SidebarHeader className="gap-3 px-2 py-3">
-          <div className="flex items-center gap-2 px-1.5">
-            <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-              <Sparkles className="h-3.5 w-3.5" />
-            </div>
-            <span className="truncate text-[15px] font-bold tracking-tight text-sidebar-foreground group-data-[collapsible=icon]:hidden">
-              Trợ Lý Pháp Lý
-            </span>
+      <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar">
+        {/* Brand Header */}
+        <SidebarHeader className="px-3 pt-3 pb-2 gap-2.5">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={onNewChat}
+              className="flex items-center gap-2.5 text-left group-data-[collapsible=icon]:justify-center focus:outline-none cursor-pointer"
+            >
+              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-xs">
+                <Scale className="h-4 w-4" />
+              </div>
+              <div className="flex flex-col min-w-0 group-data-[collapsible=icon]:hidden">
+                <span className="text-sm font-bold tracking-tight text-sidebar-foreground truncate leading-tight">
+                  Legal CRAG
+                </span>
+                <span className="text-[10px] font-medium text-sidebar-foreground/50 tracking-wide uppercase">
+                  Assistant
+                </span>
+              </div>
+            </button>
+
+            <SidebarTrigger className="h-7 w-7 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent rounded-md group-data-[collapsible=icon]:hidden" />
           </div>
 
-          <SidebarMenu>
+          {/* Primary Action: New Chat (DeepSeek Harness style) */}
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={onNewChat}
+              className={cn(
+                "flex items-center gap-2 w-full rounded-xl border border-sidebar-border bg-sidebar-accent/50 px-2.5 py-2 text-xs font-semibold text-sidebar-foreground transition-all hover:bg-sidebar-accent hover:border-sidebar-border/80 shadow-2xs cursor-pointer",
+                "group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:w-7 group-data-[collapsible=icon]:h-7 group-data-[collapsible=icon]:mx-auto"
+              )}
+              title="Cuộc trò chuyện mới"
+            >
+              <MessageSquarePlus className="h-4 w-4 text-primary flex-shrink-0" />
+              <span className="truncate group-data-[collapsible=icon]:hidden">Cuộc trò chuyện mới</span>
+            </button>
+          </div>
+
+          {/* Quick Navigation Panels */}
+          <SidebarMenu className="mt-1">
             <SidebarMenuItem>
-              <SidebarMenuButton onClick={onNewChat} tooltip="Cuộc trò chuyện mới">
-                <MessageSquarePlus />
-                <span>Cuộc trò chuyện mới</span>
+              <SidebarMenuButton onClick={() => setIsSearchOpen(true)} tooltip="Tìm kiếm nhanh">
+                <Search className="h-4 w-4 text-sidebar-foreground/60" />
+                <span className="text-xs">Tìm kiếm</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton onClick={() => setIsSearchOpen(true)} tooltip="Tìm kiếm">
-                <Search />
-                <span>Tìm kiếm</span>
+              <SidebarMenuButton asChild tooltip="Kho dữ liệu văn bản">
+                <Link href="/admin">
+                  <Database className="h-4 w-4 text-sidebar-foreground/60" />
+                  <span className="text-xs">Quản lý Dữ liệu</span>
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarHeader>
 
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>Kho Tri Thức</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {categoryGroups.length === 0 ? (
-                  <SidebarMenuItem>
-                    <span className="px-2 text-xs italic text-sidebar-foreground/50">
-                      Đang tải danh mục...
-                    </span>
-                  </SidebarMenuItem>
-                ) : (
-                  categoryGroups.map(({ category, documents: docs }) => {
+        <SidebarSeparator className="my-1" />
+
+        {/* Scrollable Main Area: History first, then Legal Categories */}
+        <SidebarContent className="px-2">
+          {/* Conversation History */}
+          {dayGroups.length === 0 ? (
+            <div className="px-2 py-4 text-center text-xs text-sidebar-foreground/40 group-data-[collapsible=icon]:hidden">
+              Chưa có cuộc trò chuyện nào
+            </div>
+          ) : (
+            dayGroups.map(({ label, conversations: convs }) => (
+              <SidebarGroup key={label} className="py-1">
+                <SidebarGroupLabel className="text-[11px] font-semibold text-sidebar-foreground/50 px-2 py-1">
+                  {label}
+                </SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {convs.map((conversation) => (
+                      <SidebarMenuItem key={conversation.sessionId}>
+                        <SidebarMenuButton
+                          onClick={() => onSelectConversation(conversation.sessionId)}
+                          isActive={conversation.sessionId === activeSessionId}
+                          tooltip={conversation.title}
+                          className={cn(
+                            "rounded-lg text-xs transition-colors",
+                            conversation.sessionId === activeSessionId
+                              ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
+                              : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50"
+                          )}
+                        >
+                          <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 text-sidebar-foreground/50" />
+                          <span className="truncate">{conversation.title}</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            ))
+          )}
+
+          {/* Legal Categories Section */}
+          {categoryGroups.length > 0 && (
+            <SidebarGroup className="mt-2 pt-2 border-t border-sidebar-border/40">
+              <SidebarGroupLabel className="text-[11px] font-semibold text-sidebar-foreground/50 px-2 py-1">
+                Kho quy phạm
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {categoryGroups.map(({ category, documents: docs }) => {
                     const Icon = CATEGORY_ICONS[category] || Folder;
                     return (
                       <SidebarMenuItem key={category}>
@@ -144,68 +218,27 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                               `Cho tôi biết những quy định pháp lý chính trong nhóm văn bản "${category}".`
                             )
                           }
-                          tooltip={category}
+                          tooltip={`${category} (${docs.length})`}
+                          className="text-xs text-sidebar-foreground/75 hover:bg-sidebar-accent/50 rounded-lg"
                         >
-                          <Icon />
-                          <span>{category}</span>
+                          <Icon className="h-3.5 w-3.5 text-sidebar-foreground/50 flex-shrink-0" />
+                          <span className="truncate">{category}</span>
                         </SidebarMenuButton>
-                        <SidebarMenuBadge>
-                          {String(docs.length).padStart(2, "0")}
+                        <SidebarMenuBadge className="text-[10px] font-mono text-sidebar-foreground/50">
+                          {docs.length}
                         </SidebarMenuBadge>
                       </SidebarMenuItem>
                     );
-                  })
-                )}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-
-          {dayGroups.map(({ label, conversations: convs }) => (
-            <SidebarGroup key={label}>
-              <SidebarGroupLabel>{label}</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {convs.map((conversation) => (
-                    <SidebarMenuItem key={conversation.sessionId}>
-                      <SidebarMenuButton
-                        onClick={() => onSelectConversation(conversation.sessionId)}
-                        isActive={conversation.sessionId === activeSessionId}
-                        tooltip={conversation.title}
-                      >
-                        <span className="truncate">{conversation.title}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
+                  })}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
-          ))}
+          )}
         </SidebarContent>
 
-        <SidebarSeparator />
-
-        <SidebarFooter className="px-2 pb-2">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton size="lg" onClick={onOpenSettings} tooltip="Cài đặt">
-                <Avatar className="h-6 w-6">
-                  <AvatarFallback className="bg-primary/10 text-[10px] font-bold text-primary">
-                    {clientLabel.slice(0, 2).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex min-w-0 flex-1 flex-col leading-tight group-data-[collapsible=icon]:hidden">
-                  <span className="truncate text-xs font-semibold">Ẩn danh · {clientLabel}</span>
-                  <span className="truncate text-[10px] text-sidebar-foreground/60">
-                    {memoryCount > 0 ? `${memoryCount} hồ sơ đã ghi nhận` : "Chưa có hồ sơ"}
-                  </span>
-                </div>
-                <Settings className="h-3.5 w-3.5 flex-shrink-0 text-sidebar-foreground/50 group-data-[collapsible=icon]:hidden" />
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
       </Sidebar>
 
+      {/* Quick Search Dialog */}
       <CommandDialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
         <CommandInput
           placeholder="Tìm cuộc trò chuyện hoặc văn bản pháp lý..."
@@ -222,36 +255,30 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                   value={`conv-${conversation.sessionId}`}
                   onSelect={() => runSearch(() => onSelectConversation(conversation.sessionId))}
                 >
-                  <MessageSquarePlus className="mr-2 h-4 w-4" />
+                  <MessageSquare className="mr-2 h-4 w-4 text-primary" />
                   <span className="truncate">{conversation.title}</span>
                 </CommandItem>
               ))}
             </CommandGroup>
           )}
+
           {filteredDocuments.length > 0 && (
-            <CommandGroup heading="Văn bản pháp lý">
-              {filteredDocuments.slice(0, 8).map((doc) => (
+            <CommandGroup heading="Văn bản pháp luật">
+              {filteredDocuments.map((doc) => (
                 <CommandItem
                   key={doc.id}
                   value={`doc-${doc.id}`}
                   onSelect={() =>
                     runSearch(() =>
-                      onSelectPrompt(
-                        `Tóm tắt nội dung chính của văn bản ${doc.document_number} - ${doc.title}.`
-                      )
+                      onSelectPrompt(`Tóm tắt nội dung chính của ${doc.document_number}: ${doc.title}`)
                     )
                   }
                 >
-                  <Folder className="mr-2 h-4 w-4" />
-                  <div className="flex min-w-0 flex-col">
-                    <span className="truncate font-mono text-xs font-semibold">
-                      {doc.document_number}
-                    </span>
-                    <span className="truncate text-xs text-muted-foreground">{doc.title}</span>
+                  <Folder className="mr-2 h-4 w-4 text-indigo-500" />
+                  <div className="flex flex-col min-w-0">
+                    <span className="font-semibold text-xs">{doc.document_number}</span>
+                    <span className="text-[11px] text-muted-foreground truncate">{doc.title}</span>
                   </div>
-                  <Badge variant="outline" className="ml-auto text-[10px]">
-                    {doc.status === "effective" ? "Còn hiệu lực" : "Hết hiệu lực"}
-                  </Badge>
                 </CommandItem>
               ))}
             </CommandGroup>

@@ -7,14 +7,14 @@ from pathlib import Path
 from config import DB_PATH
 
 EXPECTED_TABLES = [
-    "legal_documents",
-    "provisions",
-    "provision_versions",
+    "documents",
+    "document_chunks",
     "legal_relations",
+    "ingestion_jobs",
     "clients",
-    "chat_sessions",
-    "query_logs",
-    "client_memories",
+    "sessions",
+    "messages",
+    "memories",
 ]
 
 

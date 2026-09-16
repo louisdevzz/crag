@@ -6,15 +6,13 @@ import json
 import sys
 from pathlib import Path
 
-from agent.graph import get_crag_app, invoke_crag
+from agent.runtime import invoke_crag
 from legal.citations import validate_citations
-from memory.extractor import extract_and_save_memories
 from memory.store import get_memory_store
 
 
 def run_demo_suite():
     """Execute the 5 mandatory demo scenarios required by Table 3.2."""
-    app = get_crag_app()
     store = get_memory_store()
 
     print("=" * 80)
@@ -68,15 +66,17 @@ def run_demo_suite():
     print(f"-> Citation Report: {res3.get('citation_report')}")
 
     # -------------------------------------------------------------------------
-    # TEST 4: Database Tool (Structured metadata query)
+    # TEST 4: Document Effectiveness Query (agentic crag_search, no dedicated
+    # database route — the agent decides for itself whether the corpus covers this)
     # -------------------------------------------------------------------------
     print("\n" + "#" * 80)
-    print("TEST 4: DATABASE TOOL — Direct Structured Metadata Query")
+    print("TEST 4: DOCUMENT METADATA QUESTION — Agentic crag_search (no fixed router)")
     print("#" * 80)
     q4 = "Văn bản số 41/2024/QH15 còn hiệu lực không?"
     print(f"Câu hỏi: '{q4}'")
     res4 = invoke_crag(q4, client_id="demo_client", session_id="demo_thread_4")
-    print(f"-> Route:           {res4.get('route')} (Expected: database)")
+    print(f"-> Route:           {res4.get('route')} | CRAG Action: {res4.get('crag_action')}")
+    print(f"-> Tool calls:      {[t['tool'] for t in res4.get('tool_trace', [])]}")
     print(f"-> Answer:          {res4.get('generation', {}).get('answer')}")
     print(f"-> Citation Report: {res4.get('citation_report')}")
 
@@ -113,7 +113,6 @@ def run_demo_suite():
 
 def interactive_cli():
     """Interactive command-line chat session with memory context."""
-    app = get_crag_app()
     store = get_memory_store()
     client_id = "cli_user_default"
     session_id = store.create_session(client_id)
@@ -136,20 +135,16 @@ def interactive_cli():
                 print("Đã xóa sạch Semantic Memory của client.")
                 continue
 
-            # Extract memory
-            extract_and_save_memories(client_id, query)
-            mem_ctx = store.format_memory_context(client_id)
-
-            # Invoke Agent
+            # Agent Runtime handles memory extraction, context assembly, and turn
+            # persistence internally (see agent/runtime.py::invoke_crag).
             res = invoke_crag(
                 query=query,
                 client_id=client_id,
                 session_id=session_id,
-                memory_context=mem_ctx,
             )
 
             route = res.get("route", "rag")
-            action = res.get("crag_action", "DATABASE" if route == "database" else "CORRECT")
+            action = res.get("crag_action", "CORRECT")
             ans = res.get("generation", {}).get("answer", "")
             report = res.get("citation_report", {})
             evidence = res.get("evidence", [])

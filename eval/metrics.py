@@ -80,7 +80,7 @@ def compute_fallback_metrics(eval_records: List[Dict[str, Any]]) -> Dict[str, fl
 
 def compute_action_f1(eval_records: List[Dict[str, Any]]) -> Dict[str, float]:
     """Compute Macro-F1 across routing and CRAG action decisions."""
-    classes = ["CORRECT", "AMBIGUOUS", "INCORRECT", "DATABASE"]
+    classes = ["CORRECT", "AMBIGUOUS", "INCORRECT"]
     f1_scores = {}
 
     for c in classes:

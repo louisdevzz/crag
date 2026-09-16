@@ -8,7 +8,8 @@ from pathlib import Path
 # Ensure project root is in sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agent.graph import get_crag_app, invoke_crag
+from agent.graph import get_crag_app
+from agent.runtime import invoke_crag
 from config import CALIBRATION_SET_PATH, TEST_SET_PATH
 from eval.metrics import (
     compute_action_f1,
@@ -56,15 +57,12 @@ def run_grid_search_calibration(
             q = s["question"]
             exp_act = s["expected_action"]
 
-            if s.get("type") == "database":
-                pred_act = "DATABASE"
-            else:
-                dense_hits = dense_retrieve(q, top_k=10)
-                bm25_hits = bm25_retrieve(q, top_k=10)
-                fused = rrf_merge([dense_hits, bm25_hits], top_k=10)
-                reranked = rerank(q, fused, top_k=5)
-                scores = [d.get("score", 0.0) for d in reranked]
-                pred_act = decide_crag_action(scores, t_low=t_low, t_high=t_high)
+            dense_hits = dense_retrieve(q, top_k=10)
+            bm25_hits = bm25_retrieve(q, top_k=10)
+            fused = rrf_merge([dense_hits, bm25_hits], top_k=10)
+            reranked = rerank(q, fused, top_k=5)
+            scores = [d.get("score", 0.0) for d in reranked]
+            pred_act = decide_crag_action(scores, t_low=t_low, t_high=t_high)
 
             records.append({
                 "type": s.get("type"),
@@ -120,8 +118,7 @@ def run_test_benchmark(
         # Run through LangGraph
         res = invoke_crag(query=q, as_of_date=as_of_date, session_id=f"eval_thread_{idx}")
 
-        route = res.get("route")
-        pred_act = "DATABASE" if route == "database" else res.get("crag_action", "AMBIGUOUS")
+        pred_act = res.get("crag_action", "AMBIGUOUS")
         generation = res.get("generation", {})
         report = res.get("citation_report", {})
         evidence = res.get("evidence", [])

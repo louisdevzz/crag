@@ -2,17 +2,19 @@
  * API Client communicating with FastAPI Backend Gateway.
  */
 import {
-  AdminDocument,
+  AdminDocumentDetail,
+  AdminDocumentSummary,
   AdminSettings,
   AdminStats,
   ChatResponse,
+  ChunkItem,
   ClientMemoryProfile,
   DeleteResult,
   HistoryItem,
-  IngestResult,
   LegalDocument,
   ModelSettings,
   StreamEvent,
+  UploadResult,
 } from "./types";
 
 export function getApiBase(): string {
@@ -143,7 +145,7 @@ export async function clearClientMemory(clientId: string): Promise<boolean> {
   }
 }
 
-export async function fetchAdminDocuments(): Promise<AdminDocument[]> {
+export async function fetchAdminDocuments(): Promise<AdminDocumentSummary[]> {
   const apiBase = getApiBase();
   try {
     const res = await fetch(`${apiBase}/api/admin/documents`);
@@ -151,6 +153,30 @@ export async function fetchAdminDocuments(): Promise<AdminDocument[]> {
     return res.json();
   } catch (e) {
     console.error("Failed to fetch admin documents", e);
+    return [];
+  }
+}
+
+export async function fetchAdminDocumentDetail(documentId: string): Promise<AdminDocumentDetail | null> {
+  const apiBase = getApiBase();
+  try {
+    const res = await fetch(`${apiBase}/api/admin/documents/${encodeURIComponent(documentId)}`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch (e) {
+    console.error("Failed to fetch admin document detail", e);
+    return null;
+  }
+}
+
+export async function fetchAdminDocumentChunks(documentId: string): Promise<ChunkItem[]> {
+  const apiBase = getApiBase();
+  try {
+    const res = await fetch(`${apiBase}/api/admin/documents/${encodeURIComponent(documentId)}/chunks`);
+    if (!res.ok) return [];
+    return res.json();
+  } catch (e) {
+    console.error("Failed to fetch admin document chunks", e);
     return [];
   }
 }
@@ -167,12 +193,13 @@ export async function fetchAdminStats(): Promise<AdminStats | null> {
   }
 }
 
-export async function uploadAdminDocument(file: File): Promise<IngestResult> {
+export async function uploadAdminDocument(file: File, replace?: boolean): Promise<UploadResult> {
   const apiBase = getApiBase();
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(`${apiBase}/api/admin/documents/upload`, {
+  const url = `${apiBase}/api/admin/documents/upload${replace ? "?replace=true" : ""}`;
+  const res = await fetch(url, {
     method: "POST",
     body: formData,
   });
