@@ -31,6 +31,50 @@ OCR_CACHE_DIR = PROCESSED_DATA_DIR / "ocr_cache"
 SCANNED_PAGES_DIR = PROCESSED_DATA_DIR / "scanned_pages"
 
 
+def _build_openai_vision(model: str, api_key: str):
+    from langchain_openai import ChatOpenAI
+    return ChatOpenAI(model=model, api_key=api_key, temperature=0.0)
+
+
+def _build_groq_vision(model: str, api_key: str):
+    from langchain_groq import ChatGroq
+    return ChatGroq(model=model, api_key=api_key, temperature=0.0)
+
+
+def _build_openrouter_vision(model: str, api_key: str):
+    from langchain_openai import ChatOpenAI
+    return ChatOpenAI(model=model, api_key=api_key, base_url="https://openrouter.ai/api/v1", temperature=0.0)
+
+
+# Per-provider wiring for `_call_vision_llm`: env var holding the key, the
+# placeholder prefix `.env.example` ships (skipped so a fresh, un-configured
+# clone never burns a request on it), the default model when the caller
+# didn't set VISION_MODEL, and the LangChain client builder. "qwen/qwen3.8-27b"
+# is Groq's current natively-multimodal chat model and the one this project
+# already uses for text generation (LLM_MODEL) — verified working for image
+# transcription directly against the Groq API; the previous default,
+# "llama-3.2-11b-vision-preview", was decommissioned by Groq in April 2025.
+_VISION_PROVIDERS: Dict[str, Dict[str, Any]] = {
+    "groq": {
+        "env_key": "GROQ_API_KEY",
+        "placeholder_prefix": "gsk_your_",
+        "default_model": "qwen/qwen3.8-27b",
+        "build": _build_groq_vision,
+    },
+    "openai": {
+        "env_key": "OPENAI_API_KEY",
+        "placeholder_prefix": "sk-your_",
+        "default_model": "gpt-4o-mini",
+        "build": _build_openai_vision,
+    },
+    "openrouter": {
+        "env_key": "OPENROUTER_API_KEY",
+        "placeholder_prefix": "sk-or-your_",
+        "default_model": "google/gemini-flash-1.5",
+        "build": _build_openrouter_vision,
+    },
+}
+
 class UniversalLegalPreprocessor:
     """End-to-end pre-processing pipeline for any Vietnamese legal document."""
 
@@ -40,8 +84,12 @@ class UniversalLegalPreprocessor:
         vision_model: Optional[str] = None,
         enable_vision_ocr: bool = True,
     ):
-        self.vision_provider = vision_provider or os.getenv("VISION_PROVIDER") or os.getenv("LLM_PROVIDER", "openai")
-        self.vision_model = vision_model or os.getenv("VISION_MODEL") or ("llama-3.2-11b-vision-preview" if self.vision_provider == "groq" else "gpt-4o-mini")
+        self.vision_provider = (vision_provider or os.getenv("VISION_PROVIDER") or os.getenv("LLM_PROVIDER", "groq")).lower().strip()
+        self.vision_model = (
+            vision_model
+            or os.getenv("VISION_MODEL")
+            or _VISION_PROVIDERS.get(self.vision_provider, {}).get("default_model", "gpt-4o-mini")
+        )
         self.enable_vision_ocr = enable_vision_ocr
         OCR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         SCANNED_PAGES_DIR.mkdir(parents=True, exist_ok=True)
@@ -125,7 +173,16 @@ class UniversalLegalPreprocessor:
         return ""
 
     def _call_vision_llm(self, image_bytes: bytes, page_num: int, doc_stem: str) -> Optional[str]:
-        """Call Vision LLM to transcribe legal page image into exact Vietnamese text."""
+        """Call Vision LLM to transcribe legal page image into exact Vietnamese text.
+
+        Tries `self.vision_provider`/`self.vision_model` (VISION_PROVIDER/VISION_MODEL,
+        defaulting to LLM_PROVIDER) first, then falls back to the other configured
+        providers in `_VISION_PROVIDERS` — each skipped outright when its API key is
+        absent or still the placeholder shipped in `.env.example`, so a single-provider
+        setup (the common case) never wastes a request on an unconfigured one.
+        """
+        from langchain_core.messages import HumanMessage
+
         b64_image = base64.b64encode(image_bytes).decode("utf-8")
         data_url = f"data:image/png;base64,{b64_image}"
 
@@ -135,65 +192,29 @@ class UniversalLegalPreprocessor:
             "giữ nguyên toàn bộ số hiệu, tên Chương, Điều, Khoản, Điểm, bảng biểu và dấu câu. "
             "Tuyệt đối không tóm tắt, không thêm lời bình, chỉ trả về nội dung văn bản nguyên gốc."
         )
+        msg = HumanMessage(content=[
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": data_url}},
+        ])
 
-        # 1. Try OpenAI
-        openai_key = os.getenv("OPENAI_API_KEY")
-        if openai_key:
+        provider_order = [self.vision_provider] + [
+            p for p in _VISION_PROVIDERS if p != self.vision_provider
+        ]
+        for provider in provider_order:
+            spec = _VISION_PROVIDERS.get(provider)
+            if spec is None:
+                continue
+            api_key = os.getenv(spec["env_key"], "")
+            if not api_key or api_key.startswith(spec["placeholder_prefix"]):
+                continue
+            model = self.vision_model if provider == self.vision_provider else spec["default_model"]
             try:
-                from langchain_openai import ChatOpenAI
-                from langchain_core.messages import HumanMessage
-
-                llm = ChatOpenAI(model="gpt-4o-mini", api_key=openai_key, temperature=0.0)
-                msg = HumanMessage(content=[
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ])
+                llm = spec["build"](model, api_key)
                 res = llm.invoke([msg])
-                print(f"  Page {page_num}: Successfully transcribed via OpenAI Vision LLM.")
+                print(f"  Page {page_num}: Successfully transcribed via {provider} Vision LLM ({model}).")
                 return res.content.strip()
             except Exception as e:
-                print(f"  Page {page_num}: OpenAI Vision failed ({e})")
-
-        # 2. Try Groq Vision
-        groq_key = os.getenv("GROQ_API_KEY")
-        if groq_key:
-            try:
-                from langchain_groq import ChatGroq
-                from langchain_core.messages import HumanMessage
-
-                llm = ChatGroq(model="llama-3.2-11b-vision-preview", api_key=groq_key, temperature=0.0)
-                msg = HumanMessage(content=[
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ])
-                res = llm.invoke([msg])
-                print(f"  Page {page_num}: Successfully transcribed via Groq Vision LLM.")
-                return res.content.strip()
-            except Exception as e:
-                print(f"  Page {page_num}: Groq Vision failed ({e})")
-
-        # 3. Try OpenRouter Vision
-        openrouter_key = os.getenv("OPENROUTER_API_KEY")
-        if openrouter_key:
-            try:
-                from langchain_openai import ChatOpenAI
-                from langchain_core.messages import HumanMessage
-
-                llm = ChatOpenAI(
-                    model="google/gemini-flash-1.5",
-                    api_key=openrouter_key,
-                    base_url="https://openrouter.ai/api/v1",
-                    temperature=0.0,
-                )
-                msg = HumanMessage(content=[
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ])
-                res = llm.invoke([msg])
-                print(f"  Page {page_num}: Successfully transcribed via OpenRouter Vision LLM.")
-                return res.content.strip()
-            except Exception as e:
-                print(f"  Page {page_num}: OpenRouter Vision failed ({e})")
+                print(f"  Page {page_num}: {provider} Vision failed ({e})")
 
         return None
 
