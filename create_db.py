@@ -6,6 +6,25 @@ from pathlib import Path
 
 from config import DB_PATH
 
+# Columns added to `ingestion_jobs` after its original release. `CREATE TABLE
+# IF NOT EXISTS` (via schema.sql) never alters an already-existing table, so
+# an app.db created before these columns existed needs this explicit,
+# idempotent `ALTER TABLE ... ADD COLUMN` migration on every startup.
+_INGESTION_JOBS_MIGRATIONS = [
+    ("detail", "TEXT"),
+    ("processed_units", "INTEGER NOT NULL DEFAULT 0"),
+    ("total_units", "INTEGER NOT NULL DEFAULT 0"),
+]
+
+
+def _migrate_columns(con: sqlite3.Connection) -> None:
+    """Add any `ingestion_jobs` columns missing from an already-existing table."""
+    existing = {row[1] for row in con.execute("PRAGMA table_info(ingestion_jobs)")}
+    for name, ddl_type in _INGESTION_JOBS_MIGRATIONS:
+        if name not in existing:
+            con.execute(f"ALTER TABLE ingestion_jobs ADD COLUMN {name} {ddl_type}")
+
+
 EXPECTED_TABLES = [
     "documents",
     "document_chunks",
@@ -58,6 +77,8 @@ def init_db(db_path: Path | str = DB_PATH, quiet: bool = False) -> Path:
         con.execute("PRAGMA journal_mode = WAL")
         with open(schema_file, "r", encoding="utf-8") as f:
             con.executescript(f.read())
+        _migrate_columns(con)
+        con.commit()
 
     if not quiet:
         counts = verify_db(db_path)
@@ -65,5 +86,7 @@ def init_db(db_path: Path | str = DB_PATH, quiet: bool = False) -> Path:
         print(f"Verified {len(counts)}/{len(EXPECTED_TABLES)} tables.")
 
     return db_path
+
+
 if __name__ == "__main__":
     init_db()

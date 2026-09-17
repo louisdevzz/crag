@@ -6,6 +6,7 @@ import {
   AdminDocumentSummary,
   AdminSettings,
   AdminStats,
+  BatchUploadResult,
   ChatResponse,
   ChunkItem,
   ClientMemoryProfile,
@@ -225,6 +226,27 @@ export async function uploadAdminDocument(file: File, replace?: boolean): Promis
   formData.append("file", file);
 
   const url = `${apiBase}/api/admin/documents/upload${replace ? "?replace=true" : ""}`;
+  const res = await fetch(url, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => null);
+    throw new Error(errorBody?.detail || `Tải lên thất bại (${res.status})`);
+  }
+
+  return res.json();
+}
+
+export async function uploadAdminDocumentsBatch(files: File[], replace?: boolean): Promise<BatchUploadResult> {
+  const apiBase = getApiBase();
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("files", file);
+  }
+
+  const url = `${apiBase}/api/admin/documents/upload-batch${replace ? "?replace=true" : ""}`;
   const res = await fetch(url, {
     method: "POST",
     body: formData,

@@ -6,6 +6,7 @@ import { AdminDocumentSummary } from "../../lib/types";
 const STAGE_LABELS: Record<string, string> = {
   PARSING: "Đọc và trích xuất văn bản",
   OCR: "Nhận diện văn bản quét (OCR)",
+  CLEANING: "Làm sạch & chuẩn hoá văn bản",
   STRUCTURING: "Phát hiện cấu trúc pháp lý (Chương/Điều/Khoản)",
   CHUNKING: "Tạo các đoạn tri thức (chunks)",
   EMBEDDING: "Lập chỉ mục tri thức",
@@ -20,6 +21,7 @@ export function stageLabel(stage: string): string {
 interface StatusPillProps {
   status: AdminDocumentSummary["status"];
   stage?: string | null;
+  detail?: string | null;
   errorMessage?: string | null;
 }
 
@@ -37,7 +39,7 @@ const STATUS_LABELS: Record<AdminDocumentSummary["status"], string> = {
   UPLOADED: "Đang chờ xử lý",
 };
 
-export const StatusPill: React.FC<StatusPillProps> = ({ status, stage, errorMessage }) => {
+export const StatusPill: React.FC<StatusPillProps> = ({ status, stage, detail, errorMessage }) => {
   return (
     <div className="inline-flex flex-col items-start gap-0.5">
       <span
@@ -47,7 +49,10 @@ export const StatusPill: React.FC<StatusPillProps> = ({ status, stage, errorMess
         {STATUS_LABELS[status]}
       </span>
       {status === "PROCESSING" && stage && (
-        <span className="text-[9px] text-dsh-muted font-medium">{stageLabel(stage)}</span>
+        <span className="text-[9px] text-dsh-muted font-medium">
+          {stageLabel(stage)}
+          {detail ? ` · ${detail}` : ""}
+        </span>
       )}
     </div>
   );

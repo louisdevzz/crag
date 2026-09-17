@@ -26,7 +26,7 @@ from ingestion import documents as documents_repo
 from ingestion import chunks as chunks_repo
 from ingestion import indexer
 from ingestion import jobs as jobs_repo
-from ingestion.worker import submit_ingestion
+from ingestion.worker import submit_batch_ingestion, submit_ingestion
 from logging_config import get_logger
 from memory.store import get_memory_store
 from monitoring import trace_config
@@ -396,6 +396,9 @@ class AdminDocumentSummary(BaseModel):
     page_count: int = 0
     chunk_count: int = 0
     stage: Optional[str] = None
+    detail: Optional[str] = None
+    processed_units: int = 0
+    total_units: int = 0
     error_message: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
@@ -405,6 +408,9 @@ class IngestionJobInfo(BaseModel):
     id: str
     stage: str
     progress: float
+    detail: Optional[str] = None
+    processed_units: int = 0
+    total_units: int = 0
     error_message: Optional[str] = None
 
 
@@ -439,6 +445,20 @@ class UploadResult(BaseModel):
     job_id: str
 
 
+class BatchUploadItem(BaseModel):
+    filename: str
+    status: str  # QUEUED | SKIPPED | ERROR
+    document_id: Optional[str] = None
+    job_id: Optional[str] = None
+    error: Optional[str] = None
+
+
+class BatchUploadResult(BaseModel):
+    total: int
+    accepted: int
+    results: List[BatchUploadItem]
+
+
 class DeleteResult(BaseModel):
     document_id: str
     filename: str
@@ -446,9 +466,17 @@ class DeleteResult(BaseModel):
 
 
 def _with_stage(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Attach the live `stage`/`detail`/progress counters from the document's
+    latest ingestion job — the Admin documents table's at-a-glance one-liner
+    (e.g. "OCR trang 12/45") without a client round trip to the detail
+    endpoint for every row."""
     job = jobs_repo.get_job_for_document(doc["id"])
     doc = dict(doc)
-    doc["stage"] = job["stage"] if job and doc["status"] == "PROCESSING" else None
+    is_processing = doc["status"] == "PROCESSING"
+    doc["stage"] = job["stage"] if job and is_processing else None
+    doc["detail"] = job["detail"] if job and is_processing else None
+    doc["processed_units"] = job["processed_units"] if job and is_processing else 0
+    doc["total_units"] = job["total_units"] if job and is_processing else 0
     return doc
 
 
@@ -505,28 +533,36 @@ def _delete_document_fully(document_id: str) -> Dict[str, Any]:
     }
 
 
-@app.post("/api/admin/documents/upload", response_model=UploadResult)
-async def admin_upload_document(file: UploadFile = File(...), replace: bool = False) -> Dict[str, Any]:
-    """Upload a legal document; ingestion runs asynchronously on a background worker
-    (see `ingestion.pipeline`). Poll `GET /api/admin/documents/{id}` for live progress."""
-    ext = Path(file.filename or "").suffix.lower()
-    if ext not in ALLOWED_UPLOAD_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type '{ext}'. Allowed: {sorted(ALLOWED_UPLOAD_EXTENSIONS)}",
-        )
+class _UploadRejected(Exception):
+    """A single file's upload was rejected — bad extension, empty content, or an
+    unreplaced duplicate. Carries the same (status_code, detail) an HTTPException
+    would; the single-file endpoint raises it as one, the batch endpoint instead
+    records it as that file's per-item result so one bad file in a folder never
+    aborts the rest of the batch."""
+    def __init__(self, status_code: int, detail: str):
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
 
-    content = await file.read()
+
+def _accept_upload(filename: str, content: bytes, replace: bool) -> Dict[str, Any]:
+    """Validate + persist one uploaded file as a new `documents` row + ingestion
+    job (not yet submitted to the worker — the caller decides single vs. batch
+    submission). Shared by the single-file and folder/batch upload endpoints."""
+    ext = Path(filename or "").suffix.lower()
+    if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+        raise _UploadRejected(400, f"Định dạng không hỗ trợ '{ext}'. Cho phép: {sorted(ALLOWED_UPLOAD_EXTENSIONS)}")
+
     if not content:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+        raise _UploadRejected(400, "File rỗng")
     content_hash = hashlib.sha256(content).hexdigest()
 
     existing = documents_repo.find_by_content_hash(content_hash)
     if existing and existing["status"] != "FAILED" and not replace:
-        raise HTTPException(
-            status_code=409,
-            detail=f"File này đã tồn tại: '{existing['filename']}' (status={existing['status']}). "
-                   f"Gửi lại với replace=true để thay thế.",
+        raise _UploadRejected(
+            409,
+            f"File này đã tồn tại: '{existing['filename']}' (status={existing['status']}). "
+            f"Gửi lại với replace=true để thay thế.",
         )
     if existing:
         _delete_document_fully(existing["id"])
@@ -537,16 +573,67 @@ async def admin_upload_document(file: UploadFile = File(...), replace: bool = Fa
     dest_path.write_bytes(content)
 
     doc = documents_repo.create_document(
-        filename=file.filename,
+        filename=filename,
         file_path=str(dest_path),
         file_type=ext,
         content_hash=content_hash,
         document_id=doc_id,
     )
     job = jobs_repo.create_job(doc["id"])
-    submit_ingestion(doc["id"])
-
     return {"document_id": doc["id"], "status": doc["status"], "job_id": job["id"]}
+
+
+@app.post("/api/admin/documents/upload", response_model=UploadResult)
+async def admin_upload_document(file: UploadFile = File(...), replace: bool = False) -> Dict[str, Any]:
+    """Upload a legal document; ingestion runs asynchronously on a background worker
+    (see `ingestion.pipeline`). Poll `GET /api/admin/documents/{id}` for live progress."""
+    content = await file.read()
+    try:
+        result = _accept_upload(file.filename or "", content, replace)
+    except _UploadRejected as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+
+    submit_ingestion(result["document_id"])
+    return result
+
+
+@app.post("/api/admin/documents/upload-batch", response_model=BatchUploadResult)
+async def admin_upload_batch(files: List[UploadFile] = File(...), replace: bool = False) -> Dict[str, Any]:
+    """Upload a folder / multiple legal documents at once — the Admin frontend's
+    folder picker (`webkitdirectory`) posts every file it collected here in one
+    request. Every accepted file ingests concurrently across the shared worker
+    pool (`INGESTION_WORKERS`); a bad file (wrong extension, empty, duplicate
+    without `replace=true`) is recorded as that file's own `SKIPPED`/`ERROR`
+    result instead of aborting the rest of the batch. The corpus-wide BM25 index
+    is rebuilt exactly once after every accepted file finishes, not once per
+    file (see `ingestion.worker.submit_batch_ingestion`). Poll
+    `GET /api/admin/documents` for live per-file progress."""
+    results: List[Dict[str, Any]] = []
+    accepted_ids: List[str] = []
+
+    for file in files:
+        filename = file.filename or "unknown"
+        try:
+            content = await file.read()
+            result = _accept_upload(filename, content, replace)
+            accepted_ids.append(result["document_id"])
+            results.append({
+                "filename": filename,
+                "status": "QUEUED",
+                "document_id": result["document_id"],
+                "job_id": result["job_id"],
+            })
+        except _UploadRejected as e:
+            results.append({"filename": filename, "status": "SKIPPED", "error": e.detail})
+        except Exception as e:
+            log.exception("[UPLOAD:BATCH] failed to accept file=%s", filename)
+            results.append({"filename": filename, "status": "ERROR", "error": str(e)})
+
+    if accepted_ids:
+        submit_batch_ingestion(accepted_ids)
+
+    log.info("[UPLOAD:BATCH] accepted %d/%d file(s)", len(accepted_ids), len(files))
+    return {"total": len(files), "accepted": len(accepted_ids), "results": results}
 
 
 @app.delete("/api/admin/documents/{document_id}", response_model=DeleteResult)

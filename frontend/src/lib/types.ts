@@ -126,6 +126,9 @@ export interface AdminDocumentSummary {
   page_count: number;
   chunk_count: number;
   stage: string | null;
+  detail: string | null;
+  processed_units: number;
+  total_units: number;
   error_message: string | null;
   created_at: string | null;
   updated_at: string | null;
@@ -133,8 +136,11 @@ export interface AdminDocumentSummary {
 
 export interface IngestionJobInfo {
   id: string;
-  stage: "PARSING" | "OCR" | "STRUCTURING" | "CHUNKING" | "EMBEDDING" | "INDEXING" | "DONE" | "FAILED";
+  stage: "PARSING" | "OCR" | "CLEANING" | "STRUCTURING" | "CHUNKING" | "EMBEDDING" | "INDEXING" | "DONE" | "FAILED";
   progress: number;
+  detail: string | null;
+  processed_units: number;
+  total_units: number;
   error_message: string | null;
 }
 
@@ -173,6 +179,20 @@ export interface DeleteResult {
   document_id: string;
   filename: string;
   deleted_chunks: number;
+}
+
+export interface BatchUploadItem {
+  filename: string;
+  status: "QUEUED" | "SKIPPED" | "ERROR";
+  document_id: string | null;
+  job_id: string | null;
+  error: string | null;
+}
+
+export interface BatchUploadResult {
+  total: number;
+  accepted: number;
+  results: BatchUploadItem[];
 }
 
 export interface ClientMemoryProfile {

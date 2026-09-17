@@ -66,12 +66,17 @@ CREATE TABLE IF NOT EXISTS legal_relations (
 );
 
 -- 4. Ingestion Jobs: one row per upload, tracks the staged async ingestion pipeline.
---    stage: PARSING | OCR | STRUCTURING | CHUNKING | EMBEDDING | INDEXING | DONE
+--    stage: PARSING | OCR | CLEANING | STRUCTURING | CHUNKING | EMBEDDING | INDEXING | DONE
+--    detail: human-readable current sub-step ("OCR trang 12/45", "Đang nhúng đoạn 320/1200")
+--    processed_units/total_units: sub-step counters backing `detail` (e.g. pages OCR'd, chunks embedded)
 CREATE TABLE IF NOT EXISTS ingestion_jobs (
     id TEXT PRIMARY KEY,
     document_id TEXT NOT NULL,
     stage TEXT NOT NULL DEFAULT 'PARSING',
     progress REAL NOT NULL DEFAULT 0.0,
+    detail TEXT,
+    processed_units INTEGER NOT NULL DEFAULT 0,
+    total_units INTEGER NOT NULL DEFAULT 0,
     error_message TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     finished_at TEXT,

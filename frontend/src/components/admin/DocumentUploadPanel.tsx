@@ -1,23 +1,42 @@
 "use client";
 
 import React, { useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Loader2, UploadCloud } from "lucide-react";
-import { uploadAdminDocument } from "../../lib/api";
-import { UploadResult } from "../../lib/types";
+import { AlertTriangle, CheckCircle2, FolderUp, Loader2, UploadCloud } from "lucide-react";
+import { uploadAdminDocument, uploadAdminDocumentsBatch } from "../../lib/api";
+import { BatchUploadItem, BatchUploadResult, UploadResult } from "../../lib/types";
 
 interface DocumentUploadPanelProps {
   onIngested: (result: UploadResult) => void;
+  onBatchIngested: (result: BatchUploadResult) => void;
 }
 
 const ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".doc", ".txt", ".md"];
 
-export const DocumentUploadPanel: React.FC<DocumentUploadPanelProps> = ({ onIngested }) => {
+// Non-standard DOM attributes for folder selection; not present in React's typed InputHTMLAttributes.
+type DirectoryInputAttrs = { webkitdirectory?: string; directory?: string };
+const DIRECTORY_INPUT_ATTRS: DirectoryInputAttrs = { webkitdirectory: "", directory: "" };
+
+const BATCH_STATUS_STYLES: Record<BatchUploadItem["status"], string> = {
+  QUEUED: "bg-emerald-100 text-emerald-800",
+  SKIPPED: "bg-amber-100 text-amber-800",
+  ERROR: "bg-red-100 text-red-800",
+};
+
+const BATCH_STATUS_LABELS: Record<BatchUploadItem["status"], string> = {
+  QUEUED: "Đã đưa vào hàng đợi",
+  SKIPPED: "Bỏ qua",
+  ERROR: "Lỗi",
+};
+
+export const DocumentUploadPanel: React.FC<DocumentUploadPanelProps> = ({ onIngested, onBatchIngested }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingReplaceFile, setPendingReplaceFile] = useState<File | null>(null);
+  const [batchResult, setBatchResult] = useState<BatchUploadResult | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (file: File, replace?: boolean) => {
     const ext = "." + (file.name.split(".").pop() || "").toLowerCase();
@@ -50,6 +69,32 @@ export const DocumentUploadPanel: React.FC<DocumentUploadPanelProps> = ({ onInge
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
     if (file) handleFile(file);
+  };
+
+  const handleFolderSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files || []);
+    const files = selected.filter((file) => {
+      const ext = "." + (file.name.split(".").pop() || "").toLowerCase();
+      return ACCEPTED_EXTENSIONS.includes(ext);
+    });
+    if (files.length === 0) {
+      if (folderInputRef.current) folderInputRef.current.value = "";
+      return;
+    }
+
+    setIsUploading(true);
+    setError(null);
+    setBatchResult(null);
+    try {
+      const res = await uploadAdminDocumentsBatch(files);
+      setBatchResult(res);
+      onBatchIngested(res);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsUploading(false);
+      if (folderInputRef.current) folderInputRef.current.value = "";
+    }
   };
 
   return (
@@ -98,6 +143,26 @@ export const DocumentUploadPanel: React.FC<DocumentUploadPanelProps> = ({ onInge
         )}
       </div>
 
+      <div className="mt-2 flex items-center justify-center">
+        <button
+          type="button"
+          onClick={() => folderInputRef.current?.click()}
+          disabled={isUploading}
+          className="flex items-center gap-1.5 text-[11px] font-medium text-dsh-muted hover:text-dsh-ink disabled:opacity-50"
+        >
+          <FolderUp className="w-3.5 h-3.5" />
+          <span>Hoặc tải lên cả một thư mục</span>
+        </button>
+        <input
+          ref={folderInputRef}
+          type="file"
+          multiple
+          {...DIRECTORY_INPUT_ATTRS}
+          className="hidden"
+          onChange={handleFolderSelect}
+        />
+      </div>
+
       {result && (
         <div className="mt-3 flex items-start gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl p-3 text-xs">
           <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -119,6 +184,31 @@ export const DocumentUploadPanel: React.FC<DocumentUploadPanelProps> = ({ onInge
                 Thay thế
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {batchResult && (
+        <div className="mt-3 rounded-2xl border border-dsh-border p-3 text-xs">
+          <div className="font-semibold text-dsh-ink mb-2">
+            {batchResult.accepted}/{batchResult.total} tệp đã được đưa vào hàng đợi xử lý
+          </div>
+          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            {batchResult.results.map((item, idx) => (
+              <div key={`${item.filename}-${idx}`} className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-dsh-ink font-medium" title={item.filename}>
+                    {item.filename}
+                  </div>
+                  {item.error && <div className="text-[10px] text-dsh-muted mt-0.5">{item.error}</div>}
+                </div>
+                <span
+                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${BATCH_STATUS_STYLES[item.status]}`}
+                >
+                  {BATCH_STATUS_LABELS[item.status]}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       )}

@@ -121,7 +121,7 @@ export default function AdminPage() {
 
           <StatsCards stats={stats} isLoading={isLoading} />
 
-          <DocumentUploadPanel onIngested={loadData} />
+          <DocumentUploadPanel onIngested={loadData} onBatchIngested={loadData} />
 
           <DocumentsTable
             documents={documents}

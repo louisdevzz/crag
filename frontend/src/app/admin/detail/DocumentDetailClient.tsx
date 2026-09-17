@@ -25,11 +25,12 @@ import { ChatHeader } from "../../../components/chat/chat-header";
 
 const POLL_INTERVAL_MS = 1500;
 
-type StageRowKey = "PARSING" | "OCR" | "STRUCTURING" | "CHUNKING" | "EMBEDDING_INDEXING" | "DONE";
+type StageRowKey = "PARSING" | "OCR" | "CLEANING" | "STRUCTURING" | "CHUNKING" | "EMBEDDING_INDEXING" | "DONE";
 
 const STAGE_ROWS: { key: StageRowKey; rawStage: string }[] = [
   { key: "PARSING", rawStage: "PARSING" },
   { key: "OCR", rawStage: "OCR" },
+  { key: "CLEANING", rawStage: "CLEANING" },
   { key: "STRUCTURING", rawStage: "STRUCTURING" },
   { key: "CHUNKING", rawStage: "CHUNKING" },
   { key: "EMBEDDING_INDEXING", rawStage: "EMBEDDING" },
@@ -39,6 +40,7 @@ const STAGE_ROWS: { key: StageRowKey; rawStage: string }[] = [
 const STAGE_ROW_KEY_BY_RAW_STAGE: Record<string, StageRowKey> = {
   PARSING: "PARSING",
   OCR: "OCR",
+  CLEANING: "CLEANING",
   STRUCTURING: "STRUCTURING",
   CHUNKING: "CHUNKING",
   EMBEDDING: "EMBEDDING_INDEXING",
@@ -236,7 +238,7 @@ export default function DocumentDetailPage() {
                     <h1 className="text-base font-bold text-foreground truncate">{doc.filename}</h1>
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">{doc.title}</p>
                   </div>
-                  <StatusPill status={doc.status} stage={doc.stage} errorMessage={doc.error_message} />
+                  <StatusPill status={doc.status} stage={doc.stage} detail={doc.job?.detail} errorMessage={doc.error_message} />
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5 text-xs border-t border-border pt-4">
@@ -245,61 +247,6 @@ export default function DocumentDetailPage() {
                   <Meta label="Cơ quan ban hành" value={doc.issuing_authority} />
                   <Meta label="Ngày có hiệu lực" value={doc.effective_from} />
                 </div>
-              </div>
-
-              {/* Ingestion Pipeline Stages */}
-              <div className="bg-card border border-border rounded-2xl p-5 shadow-xs">
-                <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
-                  Tiến trình nạp & lập chỉ mục
-                </h2>
-
-                <div className="space-y-3">
-                  {visibleRows.map((row, idx) => {
-                    const isDone =
-                      doc.status === "READY" ||
-                      observedStages.has(row.rawStage) ||
-                      (currentIndex >= 0 && idx < currentIndex);
-                    const isCurrent = doc.status === "PROCESSING" && idx === currentIndex;
-                    const isFailed = doc.status === "FAILED" && (idx === currentIndex || currentIndex === -1);
-
-                    return (
-                      <div key={row.key} className="flex items-center gap-3 text-xs">
-                        <div className="flex-shrink-0">
-                          {isFailed ? (
-                            <AlertTriangle className="w-4 h-4 text-rose-500" />
-                          ) : isDone ? (
-                            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                          ) : isCurrent ? (
-                            <Loader2 className="w-4 h-4 text-primary animate-spin" />
-                          ) : (
-                            <Circle className="w-4 h-4 text-muted-foreground/30" />
-                          )}
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <span
-                            className={
-                              isCurrent
-                                ? "font-semibold text-foreground"
-                                : isDone
-                                ? "text-foreground/90"
-                                : "text-muted-foreground"
-                            }
-                          >
-                            {stageLabel(row.rawStage)}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {errorMessage && (
-                  <div className="mt-4 p-3 rounded-xl border border-rose-500/20 bg-rose-500/10 text-xs text-rose-600">
-                    <span className="font-semibold">Lỗi: </span>
-                    {errorMessage}
-                  </div>
-                )}
               </div>
 
               {/* Chunks table */}

@@ -17,18 +17,30 @@ import io
 import json
 import os
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pymupdf
 
 from config import DATA_DIR, PROCESSED_DATA_DIR, RAW_DATA_DIR
 from legal.parser import parse_legal_document, split_into_legal_strips
 from legal.temporal import parse_date
+from logging_config import get_logger
 
+log = get_logger(__name__)
 
 OCR_CACHE_DIR = PROCESSED_DATA_DIR / "ocr_cache"
 SCANNED_PAGES_DIR = PROCESSED_DATA_DIR / "scanned_pages"
+
+# How many pages' Vision LLM OCR calls run concurrently. Rendering a page to
+# an image (`pymupdf`) is CPU-only and effectively instant; transcribing it
+# is a several-second network round trip and the actual bottleneck for a
+# large scanned document, so only that step is parallelized (bounded to
+# avoid tripping the vision provider's rate limit).
+OCR_CONCURRENCY = max(1, int(os.getenv("OCR_CONCURRENCY", "4")))
+
 
 
 def _build_openai_vision(model: str, api_key: str):
@@ -98,8 +110,23 @@ class UniversalLegalPreprocessor:
         self,
         pdf_path: str | Path,
         max_pages: Optional[int] = None,
+        on_ocr_progress: Optional[Callable[[int, int], None]] = None,
     ) -> Tuple[str, List[Dict[str, Any]]]:
         """Extract text from PDF page by page. Uses digital text if present; falls back to Vision OCR.
+
+        Rendering (`pymupdf`, CPU-only, milliseconds/page) always runs
+        sequentially on this thread — `fitz` Document/Page objects aren't
+        safe to touch from multiple threads. The real bottleneck for a large
+        scanned document is each page's Vision LLM network round trip
+        (seconds); only that step runs concurrently, across up to
+        `OCR_CONCURRENCY` worker threads once every page's image bytes have
+        already been rendered — a 45-page scan OCRs in roughly
+        `45 / OCR_CONCURRENCY` round trips instead of 45.
+
+        `on_ocr_progress(completed, total)` — when given — fires after each
+        OCR'd page so the caller (`ingestion.pipeline`) can surface live
+        "OCR trang N/M" progress instead of the stage sitting still for
+        however long the whole document takes.
 
         Returns
         -------
@@ -110,66 +137,95 @@ class UniversalLegalPreprocessor:
         total_pages = len(doc)
         limit = min(total_pages, max_pages) if max_pages else total_pages
 
-        pages_data: List[Dict[str, Any]] = []
-        full_text_chunks: List[str] = []
+        pages_data: List[Optional[Dict[str, Any]]] = [None] * limit
+        pending: List[Tuple[int, bytes]] = []  # (0-based page index, rendered PNG bytes) awaiting OCR
 
-        print(f"[{pdf_path.name}] Processing {limit}/{total_pages} pages...")
+        log.info("[%s] processing %d/%d pages", pdf_path.name, limit, total_pages)
 
         for pno in range(limit):
             page = doc[pno]
             raw_text = page.get_text("text").strip()
 
-            # Check if page has digital text
             if len(raw_text) > 50:
-                pages_data.append({
-                    "page_number": pno + 1,
-                    "text": raw_text,
-                    "source_type": "digital_text",
-                })
-                full_text_chunks.append(raw_text)
-            else:
-                # Page is scanned image or empty
-                print(f"  Page {pno + 1}: No text layer found. Rendering page image...")
-                page_text = self._handle_scanned_page(page, pno + 1, pdf_path.stem)
-                pages_data.append({
-                    "page_number": pno + 1,
-                    "text": page_text,
-                    "source_type": "vision_ocr" if page_text else "empty_image",
-                })
-                if page_text:
-                    full_text_chunks.append(page_text)
+                pages_data[pno] = {"page_number": pno + 1, "text": raw_text, "source_type": "digital_text"}
+                continue
 
+            cached = self._read_ocr_cache(pdf_path.stem, pno + 1)
+            if cached is not None:
+                log.info("[%s] page %d/%d: loaded from OCR cache", pdf_path.name, pno + 1, limit)
+                pages_data[pno] = {
+                    "page_number": pno + 1, "text": cached,
+                    "source_type": "vision_ocr" if cached else "empty_image",
+                }
+                continue
+
+            log.info("[%s] page %d/%d: no text layer -> rendering for OCR", pdf_path.name, pno + 1, limit)
+            pending.append((pno, self._render_page_image(page, pno + 1, pdf_path.stem)))
+
+        doc.close()  # page image bytes already extracted; the OCR calls below never touch `doc`/`page` again
+
+        total_pending = len(pending)
+        if pending and self.enable_vision_ocr:
+            completed = 0
+            max_workers = min(OCR_CONCURRENCY, total_pending)
+            log.info(
+                "[%s] %d page(s) need Vision OCR -> dispatching across %d worker thread(s)",
+                pdf_path.name, total_pending, max_workers,
+            )
+            with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="vision-ocr") as ex:
+                futures = {
+                    ex.submit(self._transcribe_and_cache, img_bytes, pno + 1, pdf_path.stem): pno
+                    for pno, img_bytes in pending
+                }
+                for fut in as_completed(futures):
+                    pno = futures[fut]
+                    try:
+                        text = fut.result()
+                    except Exception as e:
+                        log.error("[%s] page %d/%d: OCR raised %s -> treated as empty page", pdf_path.name, pno + 1, limit, e)
+                        text = ""
+                    pages_data[pno] = {
+                        "page_number": pno + 1, "text": text,
+                        "source_type": "vision_ocr" if text else "empty_image",
+                    }
+                    completed += 1
+                    log.info("[%s] OCR progress: %d/%d page(s) done", pdf_path.name, completed, total_pending)
+                    if on_ocr_progress:
+                        on_ocr_progress(completed, total_pending)
+        elif pending:
+            # Vision OCR explicitly disabled for this call -> leave scanned pages empty rather than block.
+            for pno, _ in pending:
+                pages_data[pno] = {"page_number": pno + 1, "text": "", "source_type": "empty_image"}
+
+        full_text_chunks = [p["text"] for p in pages_data if p and p.get("text")]
         combined_text = "\n\n".join(full_text_chunks)
         return combined_text, pages_data
 
-    def _handle_scanned_page(self, page: pymupdf.Page, page_num: int, doc_stem: str) -> str:
-        """Handle scanned page: check cache, render image, call Vision LLM or save for transcription."""
-        cache_key = f"{doc_stem}_p{page_num}.txt"
-        cache_file = OCR_CACHE_DIR / cache_key
+    def _read_ocr_cache(self, doc_stem: str, page_num: int) -> Optional[str]:
+        cache_file = OCR_CACHE_DIR / f"{doc_stem}_p{page_num}.txt"
+        return cache_file.read_text(encoding="utf-8") if cache_file.exists() else None
 
-        if cache_file.exists():
-            print(f"  Page {page_num}: Loaded from OCR cache.")
-            return cache_file.read_text(encoding="utf-8")
-
-        # Render page to PNG image
+    def _render_page_image(self, page: pymupdf.Page, page_num: int, doc_stem: str) -> bytes:
+        """Render one page to PNG bytes and save it to disk (`pymupdf`, CPU-only, always
+        called on the main thread — never inside the OCR worker pool)."""
         pix = page.get_pixmap(dpi=150)
         img_bytes = pix.tobytes("png")
-
-        # Save rendered image
         doc_scanned_dir = SCANNED_PAGES_DIR / doc_stem
         doc_scanned_dir.mkdir(parents=True, exist_ok=True)
-        img_path = doc_scanned_dir / f"page_{page_num:03d}.png"
-        img_path.write_bytes(img_bytes)
+        (doc_scanned_dir / f"page_{page_num:03d}.png").write_bytes(img_bytes)
+        return img_bytes
 
-        if not self.enable_vision_ocr:
-            return ""
-
-        # Attempt Vision LLM transcription
-        transcribed = self._call_vision_llm(img_bytes, page_num, doc_stem)
+    def _transcribe_and_cache(self, image_bytes: bytes, page_num: int, doc_stem: str) -> str:
+        """Runs on an OCR worker thread: one page's Vision LLM round trip, timed, plus its
+        disk-cache write on success."""
+        start = time.perf_counter()
+        transcribed = self._call_vision_llm(image_bytes, page_num, doc_stem)
+        elapsed = time.perf_counter() - start
         if transcribed:
-            cache_file.write_text(transcribed, encoding="utf-8")
+            (OCR_CACHE_DIR / f"{doc_stem}_p{page_num}.txt").write_text(transcribed, encoding="utf-8")
+            log.info("[%s] page %d: OCR done in %.2fs (%d chars)", doc_stem, page_num, elapsed, len(transcribed))
             return transcribed
-
+        log.warning("[%s] page %d: OCR produced no text after %.2fs", doc_stem, page_num, elapsed)
         return ""
 
     def _call_vision_llm(self, image_bytes: bytes, page_num: int, doc_stem: str) -> Optional[str]:
@@ -180,6 +236,9 @@ class UniversalLegalPreprocessor:
         providers in `_VISION_PROVIDERS` — each skipped outright when its API key is
         absent or still the placeholder shipped in `.env.example`, so a single-provider
         setup (the common case) never wastes a request on an unconfigured one.
+
+        Runs on an OCR worker thread (see `extract_text_from_pdf`) — safe: each call
+        builds its own client instance (`spec["build"](...)`) rather than sharing one.
         """
         from langchain_core.messages import HumanMessage
 
@@ -211,10 +270,10 @@ class UniversalLegalPreprocessor:
             try:
                 llm = spec["build"](model, api_key)
                 res = llm.invoke([msg])
-                print(f"  Page {page_num}: Successfully transcribed via {provider} Vision LLM ({model}).")
+                log.info("[%s] page %d: transcribed via %s Vision LLM (%s)", doc_stem, page_num, provider, model)
                 return res.content.strip()
             except Exception as e:
-                print(f"  Page {page_num}: {provider} Vision failed ({e})")
+                log.warning("[%s] page %d: %s Vision failed (%s)", doc_stem, page_num, provider, e)
 
         return None
 
@@ -358,7 +417,7 @@ class UniversalLegalPreprocessor:
         # Save structured JSON to data/processed/
         out_json = PROCESSED_DATA_DIR / f"{metadata['id']}.json"
         out_json.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"Saved processed document: {out_json} ({len(provisions)} provisions, {len(all_strips)} strips)")
+        log.info("Saved processed document: %s (%d provisions, %d strips)", out_json, len(provisions), len(all_strips))
 
         return result
 
@@ -391,13 +450,13 @@ class UniversalLegalPreprocessor:
             if "processed" not in str(p) and "ocr_cache" not in str(p) and not p.name.startswith(".")
         ]
 
-        print(f"Found {len(all_pdfs)} PDF files to process in {target_dir}")
+        log.info("Found %d PDF files to process in %s", len(all_pdfs), target_dir)
         for pdf_path in sorted(all_pdfs):
             try:
                 res = self.process_file(pdf_path)
                 results.append(res)
             except Exception as e:
-                print(f"Error processing {pdf_path}: {e}")
+                log.error("Error processing %s: %s", pdf_path, e)
 
         # Write combined manifest
         manifest = {
@@ -408,7 +467,7 @@ class UniversalLegalPreprocessor:
         }
         manifest_path = DATA_DIR / "corpus_manifest.json"
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"\nCompleted preprocessing! Corpus manifest written to {manifest_path}")
+        log.info("Completed preprocessing! Corpus manifest written to %s", manifest_path)
         return results
 
 
