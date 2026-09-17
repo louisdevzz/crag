@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from config import PROCESSED_DATA_DIR, TOP_K_BM25
 from ingestion.text import tokenize_vi
-from logging_config import get_logger
+from logging_config import get_logger, timed_stage
 
 log = get_logger(__name__)
 
@@ -37,7 +37,8 @@ def load_bm25_index(index_path: Path | str = PROCESSED_DATA_DIR / "bm25_index.pk
         return {"bm25": None, "chunks": [], "count": 0}
 
     with open(index_path, "rb") as f:
-        _BM25_CACHE = pickle.load(f)
+        with timed_stage(log, "RETRIEVE:BM25:LOAD_INDEX", path=str(index_path)):
+            _BM25_CACHE = pickle.load(f)
 
     return _BM25_CACHE
 
@@ -71,7 +72,8 @@ def bm25_retrieve(
     if not tokenized_query:
         return []
 
-    raw_scores = bm25.get_scores(tokenized_query)
+    with timed_stage(log, "RETRIEVE:BM25:SCORE", corpus_size=len(chunks)):
+        raw_scores = bm25.get_scores(tokenized_query)
     # Get top-k indices
     ranked_indices = sorted(range(len(raw_scores)), key=lambda i: raw_scores[i], reverse=True)[:top_k]
 

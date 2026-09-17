@@ -9,6 +9,9 @@ from langchain_chroma import Chroma
 
 from config import CHROMA_COLLECTION, CHROMA_DIR, TOP_K_DENSE
 from llm import get_embeddings
+from logging_config import get_logger, timed_stage
+
+log = get_logger(__name__)
 
 _VECTORSTORE_CACHE: Dict[str, Chroma] = {}
 _VECTORSTORE_LOCK = threading.Lock()
@@ -57,7 +60,8 @@ def dense_retrieve(
         Candidate records with evidence_id, text, metadata, and similarity score.
     """
     vectorstore = get_vectorstore(chroma_dir)
-    results_with_scores = vectorstore.similarity_search_with_relevance_scores(query, k=top_k)
+    with timed_stage(log, "RETRIEVE:DENSE:CHROMA_QUERY", top_k=top_k):
+        results_with_scores = vectorstore.similarity_search_with_relevance_scores(query, k=top_k)
 
     candidates: List[Dict[str, Any]] = []
     for doc, score in results_with_scores:

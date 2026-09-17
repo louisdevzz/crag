@@ -21,7 +21,7 @@ from agent.prompts import build_system_prompt
 from agent.state import AgentState
 from legal.citations import validate_citations
 from llm import get_chat_model_with_fallback as get_chat_model
-from logging_config import get_logger
+from logging_config import get_logger, timed_stage
 from tools.registry import get_tool_registry
 
 log = get_logger(__name__)
@@ -260,7 +260,8 @@ def agent_node(state: AgentState) -> Dict[str, Any]:
             log.warning("[AGENT] bind_tools failed (%s) -> proceeding without tool-calling", e)
 
     try:
-        ai_msg = bound.invoke(messages)
+        with timed_stage(log, "AGENT:LLM_CALL", round=tool_call_rounds, tools_offered=len(tools_schema)):
+            ai_msg = bound.invoke(messages)
     except Exception as e:
         log.error("[AGENT] LLM call FAILED (%s) -> deterministic fallback from accumulated evidence", e)
         fallback = _deterministic_answer_from_evidence(state.get("evidence", []))
@@ -363,7 +364,8 @@ def tool_node(state: AgentState) -> Dict[str, Any]:
 
         writer({"tool_start": {"tool": name, "args": args}})
 
-        result = registry.execute(name, **args)
+        with timed_stage(log, "AGENT:TOOL_CALL", tool=name):
+            result = registry.execute(name, **args)
         payload = result.data if (result.success and isinstance(result.data, dict)) else None
         evidence = list(payload.get("evidence", [])) if payload else []
         crag_action = payload.get("crag_action") if payload else None

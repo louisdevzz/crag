@@ -5,7 +5,7 @@ import math
 from typing import Any, Dict, List, Optional
 
 from config import INTERNAL_STRIP_MIN, RERANKER_MODEL, T_HIGH, T_LOW, TOP_K_RERANK
-from logging_config import get_logger
+from logging_config import get_logger, timed_stage
 
 log = get_logger(__name__)
 
@@ -67,7 +67,8 @@ class LegalReranker:
         if self._model_type == "flag":
             try:
                 pairs = [[query, t] for t in texts]
-                raw = self._model.compute_score(pairs)
+                with timed_stage(log, "RETRIEVE:RERANK:MODEL_INFER", model_type=self._model_type, candidates=len(texts)):
+                    raw = self._model.compute_score(pairs)
                 if isinstance(raw, (int, float)):
                     raw = [raw]
                 return [sigmoid(s) for s in raw]
@@ -77,7 +78,8 @@ class LegalReranker:
         elif self._model_type == "cross_encoder":
             try:
                 pairs = [[query, t] for t in texts]
-                raw = self._model.predict(pairs)
+                with timed_stage(log, "RETRIEVE:RERANK:MODEL_INFER", model_type=self._model_type, candidates=len(texts)):
+                    raw = self._model.predict(pairs)
                 return [sigmoid(float(s)) for s in raw]
             except Exception:
                 pass

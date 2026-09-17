@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 from pydantic import BaseModel, Field
 
 from config import DB_PATH, T_HIGH, T_LOW, TOP_K_BM25, TOP_K_DENSE
-from logging_config import get_logger
+from logging_config import get_logger, timed_stage
 from retrieval.bm25 import bm25_retrieve
 from retrieval.dense import dense_retrieve
 from retrieval.fusion import rrf_merge
@@ -156,11 +156,17 @@ def crag_search(query: str, db_path: str = str(DB_PATH)) -> Dict[str, Any]:
     if _is_catalog_query(query):
         catalog = _get_catalog_evidence(db_path)
         if catalog:
-            dense_hits = dense_retrieve(query, top_k=TOP_K_DENSE)
-            bm25_hits = bm25_retrieve(query, top_k=TOP_K_BM25)
-            fused = rrf_merge([dense_hits, bm25_hits], top_k=10)
-            reranked = rerank(query, fused, top_k=3)
-            strips = catalog + refine_internal(query, reranked)
+            with timed_stage(log, "RETRIEVE:DENSE", query=query[:60]):
+                dense_hits = dense_retrieve(query, top_k=TOP_K_DENSE)
+            with timed_stage(log, "RETRIEVE:BM25", query=query[:60]):
+                bm25_hits = bm25_retrieve(query, top_k=TOP_K_BM25)
+            with timed_stage(log, "RETRIEVE:RRF", query=query[:60]):
+                fused = rrf_merge([dense_hits, bm25_hits], top_k=10)
+            with timed_stage(log, "RETRIEVE:RERANK", query=query[:60]):
+                reranked = rerank(query, fused, top_k=3)
+            with timed_stage(log, "RETRIEVE:REFINE", query=query[:60]):
+                refined = refine_internal(query, reranked)
+            strips = catalog + refined
             return {
                 "crag_action": "CORRECT",
                 "guidance": _ACTION_GUIDANCE["CORRECT"],
@@ -169,13 +175,18 @@ def crag_search(query: str, db_path: str = str(DB_PATH)) -> Dict[str, Any]:
                 "bm25_candidates": len(bm25_hits),
             }
 
-    dense_hits = dense_retrieve(query, top_k=TOP_K_DENSE)
-    bm25_hits = bm25_retrieve(query, top_k=TOP_K_BM25)
-    fused = rrf_merge([dense_hits, bm25_hits], top_k=20)
-    reranked = rerank(query, fused, top_k=5)
+    with timed_stage(log, "RETRIEVE:DENSE", query=query[:60]):
+        dense_hits = dense_retrieve(query, top_k=TOP_K_DENSE)
+    with timed_stage(log, "RETRIEVE:BM25", query=query[:60]):
+        bm25_hits = bm25_retrieve(query, top_k=TOP_K_BM25)
+    with timed_stage(log, "RETRIEVE:RRF", query=query[:60]):
+        fused = rrf_merge([dense_hits, bm25_hits], top_k=20)
+    with timed_stage(log, "RETRIEVE:RERANK", query=query[:60]):
+        reranked = rerank(query, fused, top_k=5)
     scores = [float(d.get("score", 0.0)) for d in reranked]
     action = decide_crag_action(scores, t_low=T_LOW, t_high=T_HIGH)
-    strips = refine_internal(query, reranked)
+    with timed_stage(log, "RETRIEVE:REFINE", query=query[:60]):
+        strips = refine_internal(query, reranked)
 
     # Exact-locator fast path: a query naming "Điều N" gets that Điều's clauses
     # fetched directly, ahead of whatever the fuzzy ranking above found — see
