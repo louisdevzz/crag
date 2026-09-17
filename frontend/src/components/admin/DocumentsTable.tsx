@@ -2,10 +2,11 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { deleteAdminDocument } from "../../lib/api";
 import { AdminDocumentSummary } from "../../lib/types";
 import { StatusPill } from "./StatusPill";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 interface DocumentsTableProps {
   documents: AdminDocumentSummary[];
@@ -15,19 +16,15 @@ interface DocumentsTableProps {
 
 export const DocumentsTable: React.FC<DocumentsTableProps> = ({ documents, isLoading, onDeleted }) => {
   const router = useRouter();
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<AdminDocumentSummary | null>(null);
 
-  const handleConfirmDelete = async (id: string) => {
-    setDeletingId(id);
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete) return;
     try {
-      await deleteAdminDocument(id);
-      onDeleted(id);
+      await deleteAdminDocument(pendingDelete.id);
+      onDeleted(pendingDelete.id);
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : String(e));
-    } finally {
-      setDeletingId(null);
-      setPendingDeleteId(null);
     }
   };
 
@@ -81,38 +78,19 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({ documents, isLoa
                   <td className="px-4 py-2.5 text-dsh-muted whitespace-nowrap">{doc.issuing_authority || "—"}</td>
                   <td className="px-4 py-2.5 text-dsh-muted whitespace-nowrap">{doc.effective_from || "—"}</td>
                   <td className="px-4 py-2.5">
-                    <StatusPill status={doc.status} stage={doc.stage} errorMessage={doc.error_message} />
+                    <StatusPill status={doc.status} stage={doc.stage} detail={doc.detail} errorMessage={doc.error_message} />
                   </td>
                   <td className="px-4 py-2.5 text-right text-dsh-ink font-semibold tabular-nums">
                     {doc.status === "FAILED" ? "-" : doc.chunk_count}
                   </td>
                   <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
-                    {pendingDeleteId === doc.id ? (
-                      <div className="flex items-center justify-end gap-1.5">
-                        <span className="text-[10px] text-dsh-muted">Xác nhận xóa?</span>
-                        <button
-                          onClick={() => handleConfirmDelete(doc.id)}
-                          disabled={deletingId === doc.id}
-                          className="text-[10px] font-semibold text-white bg-red-600 hover:bg-red-700 px-2.5 py-1 rounded-full disabled:opacity-50"
-                        >
-                          {deletingId === doc.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Xóa"}
-                        </button>
-                        <button
-                          onClick={() => setPendingDeleteId(null)}
-                          className="text-[10px] font-semibold text-dsh-muted hover:text-dsh-ink px-2 py-1"
-                        >
-                          Hủy
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setPendingDeleteId(doc.id)}
-                        className="text-dsh-muted hover:text-red-600 p-1.5 rounded-full hover:bg-red-50 transition-colors"
-                        title="Xóa văn bản khỏi kho tri thức"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => setPendingDelete(doc)}
+                      className="text-dsh-muted hover:text-red-600 p-1.5 rounded-full hover:bg-red-50 transition-colors"
+                      title="Xóa văn bản khỏi kho tri thức"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </td>
                 </tr>
               ))
@@ -120,6 +98,19 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({ documents, isLoa
           </tbody>
         </table>
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title="Xóa văn bản pháp lý?"
+        description={
+          pendingDelete
+            ? `"${pendingDelete.filename}" sẽ bị xóa vĩnh viễn cùng toàn bộ ${pendingDelete.chunk_count} đoạn tri thức đã lập chỉ mục. Hành động này không thể hoàn tác.`
+            : undefined
+        }
+        confirmLabel="Xóa"
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 };
