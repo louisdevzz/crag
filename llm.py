@@ -61,7 +61,7 @@ def get_chat_model(
             from providers.groq_models import resolve_groq_model
             resolved_m = resolve_groq_model(requested_model=m, preferred_family="qwen", api_key=api_key)
             from langchain_groq import ChatGroq
-            log.info("LLM provider=groq model=%s temperature=%s -> real ChatGroq client initialized", resolved_m, t)
+            log.info("LLM provider=groq model=%s temperature=%s -> ChatGroq client initialized", resolved_m, t)
             return ChatGroq(model=resolved_m, temperature=t, api_key=api_key, **kwargs)
 
         elif p == "openai":
@@ -70,7 +70,7 @@ def get_chat_model(
                 log.warning("LLM provider=openai -> NO API KEY configured, falling back to offline synthesis")
                 return None
             from langchain_openai import ChatOpenAI
-            log.info("LLM provider=openai model=%s temperature=%s -> real ChatOpenAI client initialized", m, t)
+            log.info("LLM provider=openai model=%s temperature=%s -> ChatOpenAI client initialized", m, t)
             return ChatOpenAI(model=m, temperature=t, api_key=api_key, **kwargs)
 
         elif p == "openrouter":
@@ -81,7 +81,7 @@ def get_chat_model(
             from langchain_openai import ChatOpenAI
             base_url = kwargs.pop("base_url", OPENROUTER_BASE_URL)
             log.info(
-                "LLM provider=openrouter model=%s temperature=%s base_url=%s -> real client initialized",
+                "LLM provider=openrouter model=%s temperature=%s base_url=%s -> client initialized",
                 m, t, base_url,
             )
             return ChatOpenAI(
@@ -95,7 +95,7 @@ def get_chat_model(
         elif p == "ollama":
             from langchain_ollama import ChatOllama
             base_url = kwargs.pop("base_url", OLLAMA_BASE_URL)
-            log.info("LLM provider=ollama model=%s base_url=%s -> real client initialized", m, base_url)
+            log.info("LLM provider=ollama model=%s base_url=%s -> client initialized", m, base_url)
             return ChatOllama(model=m, temperature=t, base_url=base_url, **kwargs)
 
         else:
@@ -200,7 +200,7 @@ def _build_embeddings(p: str, m: str):
             if resp.status_code != 200:
                 raise RuntimeError(f"Ollama server trả về mã lỗi HTTP {resp.status_code}")
             from langchain_ollama import OllamaEmbeddings
-            log.info("Embeddings provider=ollama model=%s base_url=%s -> real OllamaEmbeddings initialized", m, OLLAMA_BASE_URL)
+            log.info("Embeddings provider=ollama model=%s base_url=%s -> OllamaEmbeddings initialized", m, OLLAMA_BASE_URL)
             return OllamaEmbeddings(model=m, base_url=OLLAMA_BASE_URL)
         except Exception as e:
             log.error("Ollama embedding service unreachable at %s (%s)", OLLAMA_BASE_URL, e)

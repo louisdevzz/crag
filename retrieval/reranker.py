@@ -37,7 +37,7 @@ class LegalReranker:
             from FlagEmbedding import FlagReranker
             self._model = FlagReranker(self.model_name, use_fp16=False)
             self._model_type = "flag"
-            log.info("Reranker model=%s -> real FlagReranker (cross-encoder) loaded", self.model_name)
+            log.info("Reranker model=%s -> FlagReranker (cross-encoder) loaded", self.model_name)
             return
         except Exception as e:
             log.debug("Reranker FlagEmbedding unavailable (%s)", e)
@@ -47,7 +47,7 @@ class LegalReranker:
             from sentence_transformers import CrossEncoder
             self._model = CrossEncoder(self.model_name)
             self._model_type = "cross_encoder"
-            log.info("Reranker model=%s -> real sentence-transformers CrossEncoder loaded", self.model_name)
+            log.info("Reranker model=%s -> sentence-transformers CrossEncoder loaded", self.model_name)
             return
         except Exception as e:
             log.debug("Reranker sentence-transformers unavailable (%s)", e)
