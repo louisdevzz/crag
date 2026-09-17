@@ -126,9 +126,14 @@ python scripts/pull_models.py
 ```
 
 ### Bước 5: Nạp Văn bản Pháp lý
-Khởi động API (`uvicorn api.main:app`) rồi mở trang Admin (`/admin`) để tải lên PDF/DOCX/TXT — pipeline nạp dữ liệu chạy nền theo giai đoạn (xem `docs/WORKFLOW.md` mục 4). Hoặc gọi trực tiếp API:
+Khởi động API (`uvicorn api.main:app`) rồi mở trang Admin (`/admin`) để tải lên PDF/DOCX/TXT — kéo-thả từng file hoặc chọn cả một thư mục — pipeline nạp dữ liệu chạy nền theo giai đoạn (xem `docs/WORKFLOW.md` mục 5). Hoặc gọi trực tiếp API:
 ```bash
+# Một file
 curl -X POST http://localhost:8000/api/admin/documents/upload -F "file=@duong/dan/van_ban.pdf"
+
+# Cả thư mục / nhiều file cùng lúc
+curl -X POST http://localhost:8000/api/admin/documents/upload-batch \
+  -F "files=@data/doc1.pdf" -F "files=@data/doc2.pdf"
 ```
 
 ### Bước 6: Chạy 5 Kịch bản Demo Kiểm chuẩn (Table 3.2)

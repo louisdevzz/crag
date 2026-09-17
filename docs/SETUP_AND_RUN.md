@@ -138,21 +138,30 @@ Lệnh trên thực hiện tự động:
 
 ## 6. Pipeline Nạp Dữ liệu (Ingestion Pipeline)
 
-Nạp văn bản qua Admin UI (`/admin`, kéo-thả PDF/DOCX/TXT) hoặc gọi thẳng API — cả hai đều kích hoạt cùng một pipeline chạy nền theo giai đoạn:
+Nạp văn bản qua Admin UI (`/admin`, kéo-thả PDF/DOCX/TXT, hoặc chọn cả một thư mục) hoặc gọi thẳng API — cả hai đều kích hoạt cùng một pipeline chạy nền theo giai đoạn:
 
 ```bash
+# Một file
 curl -X POST http://localhost:8000/api/admin/documents/upload -F "file=@data/mydoc.pdf"
+
+# Nhiều file / cả thư mục cùng lúc (field "files" lặp lại một lần mỗi file)
+curl -X POST http://localhost:8000/api/admin/documents/upload-batch \
+  -F "files=@data/doc1.pdf" -F "files=@data/doc2.pdf" -F "files=@data/doc3.docx"
 ```
 
-Request trả về ngay `{document_id, status, job_id}`; theo dõi tiến trình qua `GET /api/admin/documents/{document_id}` (trường `job.stage`) hoặc trực tiếp trên Admin UI.
+Request trả về ngay `{document_id, status, job_id}` (single) hoặc `{total, accepted, results: [...]}` (batch, mỗi file `QUEUED`/`SKIPPED`/`ERROR`); theo dõi tiến trình qua `GET /api/admin/documents/{document_id}` (`job.stage` + `job.detail` + `job.processed_units`/`total_units`) hoặc trực tiếp trên Admin UI.
 
-### Các giai đoạn xử lý (mỗi giai đoạn cập nhật `ingestion_jobs.stage`):
-1. **PARSING** — Trích xuất text từ file (pymupdf/python-docx); phát hiện trang scan → chuyển giai đoạn **OCR** (Vision LLM) trước khi tiếp tục.
-2. **STRUCTURING** — `legal/parser.py` tách Chương → Điều → Khoản, gắn số trang cho từng provision.
-3. **CHUNKING** — Ghi từng provision thành một dòng `document_chunks` (đơn vị lập chỉ mục và duyệt trong Admin).
-4. **EMBEDDING / INDEXING** — Nhúng vector và cập nhật Chroma + rebuild BM25 (`data/processed/bm25_index.pkl`); ẩn hoàn toàn khỏi Admin UI.
+**Tốc độ nạp file nhiều trang:** OCR trang (Vision LLM) và số tài liệu ingest song song đều có thể cấu hình qua `.env` — xem `OCR_CONCURRENCY` (mặc định 4 trang OCR song song mỗi tài liệu) và `INGESTION_WORKERS` (mặc định 3 tài liệu song song). Một lô upload cũng chỉ rebuild BM25 đúng một lần sau khi toàn bộ lô hoàn tất, không rebuild lại toàn corpus cho từng file.
 
-Chỉ văn bản có `status = READY` mới được CRAG truy hồi tới.
+### Các giai đoạn xử lý (mỗi giai đoạn cập nhật `ingestion_jobs.stage`/`progress`; bước con trong giai đoạn cập nhật thêm `detail`/`processed_units`/`total_units`):
+1. **PARSING** — Trích xuất text từ file (pymupdf/python-docx); phát hiện trang scan → chuyển giai đoạn **OCR** (Vision LLM, các trang OCR song song qua `OCR_CONCURRENCY`, `detail` hiển thị `"OCR trang N/M"`) trước khi tiếp tục.
+2. **CLEANING** — `legal/cleaner.py` loại dot-leader (`....`), dòng mục lục ("Điều 7 ..... 12"), số trang đứng riêng, khối ký tên "Nơi nhận", ký tự Unicode vô hình, khoảng trắng/dòng trống dư — giữ nguyên mọi mốc cấu trúc (`Điều 1.`, `1.`, `a)`, `219/2025/NĐ-CP`).
+3. **STRUCTURING** — `legal/parser.py` tách Chương → Điều → Khoản, gắn số trang cho từng provision.
+4. **CHUNKING** — Ghi từng provision thành một dòng `document_chunks` (đơn vị lập chỉ mục và duyệt trong Admin).
+5. **EMBEDDING** — Nhúng vector theo batch 64 chunk (`detail` hiển thị `"Đang nhúng đoạn N/M"`) rồi cập nhật Chroma.
+6. **INDEXING** — Rebuild BM25 (`data/processed/bm25_index.pkl`); ẩn hoàn toàn khỏi Admin UI.
+
+Chỉ văn bản có `status = READY` mới được CRAG truy hồi tới. Mọi giai đoạn/bước con đều ghi log kèm thời gian thực thi ra console (`logging_config.timed_stage`) để chẩn đoán chính xác thời gian rơi vào đâu khi ingest chậm.
 ---
 
 ## 7. Chạy 5 Kịch bản Demo Kiểm chuẩn Bắt buộc

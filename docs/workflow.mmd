@@ -42,8 +42,9 @@ flowchart TD
 
     WORKER --> P_PARSE[PARSING]:::cCorrect
     P_PARSE -->|scanned pages?| P_OCR[OCR — Vision LLM]:::cAmb
-    P_PARSE --> P_STRUCT[STRUCTURING<br/>legal/parser.py]:::cCorrect
-    P_OCR --> P_STRUCT
+    P_PARSE --> P_CLEAN[CLEANING<br/>legal/cleaner.py]:::cCorrect
+    P_OCR --> P_CLEAN
+    P_CLEAN --> P_STRUCT[STRUCTURING<br/>legal/parser.py]:::cCorrect
     P_STRUCT --> P_CHUNK[CHUNKING<br/>document_chunks]:::cCorrect
     P_CHUNK --> P_EMBED[EMBEDDING — hidden from Admin]:::cGen
     P_EMBED --> P_INDEX[INDEXING<br/>Chroma + BM25]:::cGen

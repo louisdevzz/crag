@@ -85,10 +85,12 @@ Một phiên = một `client_id` + một `session_id`; tạo/touch (`last_active
 
 ## 5. Pipeline Nạp Dữ liệu (Ingestion Pipeline)
 
-1. `POST /api/admin/documents/upload` lưu file, tạo bản ghi `documents` (status=`UPLOADED`) + `ingestion_jobs` (stage=`PARSING`), giao cho `ingestion/worker.py` (thread pool nền), trả về ngay `{document_id, status, job_id}`.
-2. `ingestion/pipeline.py::run_ingestion_pipeline()` chạy tuần tự: `PARSING` → `OCR` (chỉ khi thực sự phát hiện trang scan) → `STRUCTURING` (`legal/parser.py`, gắn `page_start`/`page_end`) → `CHUNKING` (ghi `document_chunks`) → `EMBEDDING`/`INDEXING` (Chroma + BM25, ẩn khỏi Admin).
-3. Chỉ tài liệu có `documents.status = 'READY'` mới được `ingestion/indexer.py` đưa vào Chroma/BM25 — tức là chỉ tài liệu READY mới được `crag_search` nhìn thấy.
-4. Lỗi ở bất kỳ giai đoạn nào → `documents.status = 'FAILED'` kèm `error_message`, dọn sạch mọi vector đã lỡ ghi.
-5. Trùng nội dung (`content_hash` SHA-256): upload lại cùng file trả về `409` trừ khi gọi lại với `?replace=true`.
+1. `POST /api/admin/documents/upload` (một file) hoặc `POST /api/admin/documents/upload-batch` (nhiều file/cả thư mục — form field `files` lặp lại nhiều lần) lưu file, tạo bản ghi `documents` (status=`UPLOADED`) + `ingestion_jobs` (stage=`PARSING`) cho từng file, giao cho `ingestion/worker.py`, trả về ngay danh sách `{document_id, status, job_id}` (hoặc `BatchUploadResult` với từng file `QUEUED`/`SKIPPED`/`ERROR`).
+2. `ingestion/worker.py`: thread pool nền (`INGESTION_WORKERS`, mặc định 3) chạy nhiều tài liệu song song — không chỉ một tài liệu một lúc. Upload theo lô (`submit_batch_ingestion`) cho mỗi tài liệu bỏ qua rebuild BM25 riêng (`rebuild_bm25=False`) và chỉ rebuild đúng một lần sau khi *toàn bộ* lô hoàn tất, tránh việc rebuild toàn bộ corpus (O(tổng số chunk)) lặp lại N lần cho N file.
+3. `ingestion/pipeline.py::run_ingestion_pipeline()` chạy tuần tự cho từng tài liệu: `PARSING` → `OCR` (chỉ khi thực sự phát hiện trang scan; các trang OCR chạy song song qua `OCR_CONCURRENCY` — mặc định 4 — worker thread gọi Vision LLM, vì bottleneck thật của file nhiều trang là round-trip mạng của OCR, không phải việc render ảnh) → `CLEANING` (`legal/cleaner.py`: loại dot-leader/mục lục/số trang/khối "Nơi nhận", chuẩn hoá Unicode & khoảng trắng — không đụng tới `Điều/Khoản/Điểm`) → `STRUCTURING` (`legal/parser.py`, gắn `page_start`/`page_end`) → `CHUNKING` (ghi `document_chunks`) → `EMBEDDING` (theo batch 64 chunk) → `INDEXING` (BM25, ẩn khỏi Admin).
+4. Mỗi giai đoạn cập nhật `ingestion_jobs.stage`/`progress` (coarse) **và** `detail`/`processed_units`/`total_units` (fine-grained, thay đổi liên tục trong một giai đoạn — ví dụ `"OCR trang 12/45"`, `"Đang nhúng đoạn 320/1200"`) để Admin UI hiển thị tiến trình thực đang chạy, không đứng yên ở một tên giai đoạn trong nhiều phút với file lớn. Mọi giai đoạn/bước con đều được ghi log kèm thời gian thực thi qua `logging_config.timed_stage` để chẩn đoán chính xác thời gian rơi vào đâu từ console.
+5. Chỉ tài liệu có `documents.status = 'READY'` mới được `ingestion/indexer.py` đưa vào Chroma/BM25 — tức là chỉ tài liệu READY mới được `crag_search` nhìn thấy.
+6. Lỗi ở bất kỳ giai đoạn nào → `documents.status = 'FAILED'` kèm `error_message`, dọn sạch mọi vector đã lỡ ghi.
+7. Trùng nội dung (`content_hash` SHA-256): upload lại cùng file trả về `409` (hoặc `SKIPPED` trong lô) trừ khi gọi lại với `?replace=true`.
 
-Schema liên quan (`schema.sql`): `documents`, `document_chunks`, `ingestion_jobs`, `legal_relations`.
+Schema liên quan (`schema.sql`): `documents`, `document_chunks`, `ingestion_jobs` (nay có thêm `detail`, `processed_units`, `total_units`), `legal_relations`.

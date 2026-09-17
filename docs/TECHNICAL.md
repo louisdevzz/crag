@@ -271,8 +271,8 @@ Module `legal/preprocessor.py` được thiết kế để xử lý bất kỳ v
    Trích xuất văn bản tức thì qua `pymupdf` (đã kiểm chứng xử lý 88 trang PDF trong 0.27 giây).
 2. **Văn bản Scan Ảnh (Scanned Signed PDF):**  
    - Tự động nhận diện các trang không có text layer.
-   - Render trang thành ảnh PNG lưu tại `data/processed/scanned_pages/`.
-   - Gọi **Vision LLM** (`gpt-4o-mini`, `llama-3.2-11b-vision-preview`, hoặc `qwen2-vl`) để OCR thành văn bản nguyên gốc.
+   - Render trang thành ảnh PNG lưu tại `data/processed/scanned_pages/` (tuần tự, CPU-only, tức thì).
+   - Gọi **Vision LLM** (`gpt-4o-mini`, `qwen/qwen3.8-27b`, hoặc `qwen2-vl`) để OCR thành văn bản nguyên gốc — các trang cần OCR chạy **song song** qua tối đa `OCR_CONCURRENCY` (mặc định 4) worker thread, vì bottleneck thật của một PDF scan nhiều trang là round-trip mạng gọi Vision LLM (giây/trang), không phải việc render ảnh.
    - Lưu cache kết quả OCR tại `data/processed/ocr_cache/` để không bao giờ gọi lại API cho cùng một trang.
 3. **Legal-aware Chunking:**  
    Bóc tách cấu trúc theo đúng thứ bậc: `Chương -> Điều -> Khoản -> Điểm`. Gán nhãn `locator` xác định cho từng đoạn trích phục vụ trích dẫn minh bạch.
