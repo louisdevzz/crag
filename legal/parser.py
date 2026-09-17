@@ -38,7 +38,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 
 CHAPTER_PATTERN = re.compile(
-    r"^(Phần\s+[IVXLCDM\d]+|Chương\s+[IVXLCDM\d]+|Tiểu\s+mục\s+[IVXLCDM\d]+|Mục\s+[IVXLCDM\d]+)[\.:\s]*(.*)$",
+    r"^(Phần\s+[IVXLCDM\d]+|Chương\s+[IVXLCDM\d]+|Tiểu\s+mục\s+[IVXLCDM\d]+|Mục\s+[IVXLCDM\d]+)(?=[\.:\s]|$)[\.:\s]*(.*)$",
     re.IGNORECASE | re.MULTILINE,
 )
 ARTICLE_PATTERN = re.compile(
@@ -404,12 +404,19 @@ def parse_legal_document(
             current_chapter_title = f"{current_chapter_title} {stripped}".strip()
             continue
 
-        if not in_annex and seen_first_article and _is_heading_like(stripped):
+        if seen_first_article and _is_heading_like(stripped):
             # A document-specific section/annex heading with no official
-            # keyword (e.g. "DANH MỤC ..."). Only eligible once the body has
-            # already produced at least one Điều, so a document's own front
-            # matter (letterhead, motto, document-type marker — also short,
-            # standalone, all-caps lines) is never mistaken for one.
+            # keyword (e.g. "DANH MỤC ...", "PHỤ LỤC II"). Only eligible once
+            # the body has already produced at least one Điều, so a
+            # document's own front matter (letterhead, motto, document-type
+            # marker — also short, standalone, all-caps lines) is never
+            # mistaken for one. Deliberately NOT gated on `not in_annex`:
+            # a document with several sequential annexes ("PHỤ LỤC I", "PHỤ
+            # LỤC II", "PHỤ LỤC III", ...) must re-trigger this on every one
+            # of them — gating it would let the first annex (or a false
+            # positive, e.g. a signature-block line the cleaner didn't
+            # already strip) permanently swallow every heading after it for
+            # the rest of the document.
             flush_article()
             current_chapter = stripped
             current_chapter_title = ""
@@ -418,6 +425,14 @@ def parse_legal_document(
             in_annex = True
             next_stt = 1
             in_paren_gap = False
+            continue
+
+        if current_article and not in_annex and STT_ITEM_PATTERN.match(stripped):
+            # A bare digits-only line surviving inside an Điều/Khoản body is
+            # running page-number furniture left over from a page break,
+            # never real content — no legal clause is ever just an isolated
+            # digits-only line. (Annex/table STT rows are a different case,
+            # already handled above via `in_annex`.)
             continue
 
         if current_article:
