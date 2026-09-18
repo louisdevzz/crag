@@ -47,12 +47,8 @@ pnpm-debug.log*
 app.db
 chroma/
 chroma_db/
-data/raw/
 data/processed/
 data/uploads/
-data/*.pdf
-data/*.docx
-data/*.txt
 data/corpus_manifest.json
 # ==========================================
 # LaTeX Auxiliary & Build Files
