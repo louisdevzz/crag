@@ -1,9 +1,4 @@
-"""Central Type-Safe Configuration System for Legal CRAG Assistant.
-
-Inspired by Hermes Agent and OpenClaw schema-driven configuration principles.
-Uses Pydantic BaseModels for rigorous validation, environment overrides,
-and provides backward-compatible module-level exports.
-"""
+"""Central type-safe configuration system for the Legal CRAG assistant."""
 from __future__ import annotations
 
 import os
@@ -13,9 +8,7 @@ from typing import Dict, List, Optional, Set
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
-# Load .env from the project root, overriding any stale values already
-# present in the process environment (e.g. from a long-lived dev server
-# started before the .env file was last edited).
+# Load .env from project root with override enabled.
 load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 
 
@@ -34,8 +27,7 @@ class LLMConfig(BaseModel):
             "ollama": "qwen3.8:latest",
         }
     )
-    # Provider Manager fallback order: tried in sequence after the primary
-    # `provider` fails to initialize/respond, skipping providers missing credentials.
+    # Provider fallback order when primary provider is unavailable.
     fallback_providers: List[str] = Field(
         default_factory=lambda: [
             p.strip().lower()

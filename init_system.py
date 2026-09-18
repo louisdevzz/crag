@@ -1,8 +1,4 @@
-"""Convenience launcher for Legal CRAG Assistant System Initialization.
-
-Usage:
-    python init_system.py [--check-models] [--reset] [--quiet]
-"""
+"""Convenience launcher for Legal CRAG Assistant system initialization."""
 from __future__ import annotations
 
 import sys
