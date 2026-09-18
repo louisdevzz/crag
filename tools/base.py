@@ -1,8 +1,4 @@
-"""Base Tool Definition and Schema Contracts for Legal CRAG Assistant.
-
-Modeled after Hermes Agent (tools/web_tools.py) and OpenClaw (src/agents/tools/common.js).
-Provides strict Pydantic argument validation, error recovery, and standardized result packaging.
-"""
+"""Base tool definition and schema contracts for the Legal CRAG agent."""
 from __future__ import annotations
 
 import time

@@ -1,8 +1,4 @@
-"""Central Tool Registry for Dynamic Tool Discovery and Execution.
-
-Inspired by Hermes Agent (toolsets.py) and OpenClaw (src/agents/tools/common.js).
-Allows dynamic registration, introspection, and schema generation for LLM tool calling.
-"""
+"""Central tool registry for dynamic tool discovery and execution."""
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -20,9 +16,7 @@ class ToolRegistry:
         self._register_defaults()
 
     def _register_defaults(self):
-        """Register the exactly-two agent-visible tools (Agentic CRAG architecture:
-        Tool Registry -> {CRAG Tool, Web Search}). Structured metadata lookup lives
-        INSIDE `crag_search` as a fast path, not as its own registered tool."""
+        """Register default agent-visible tools."""
         self.register(CragSearchTool())
         self.register(ControlledWebSearchTool())
 

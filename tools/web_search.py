@@ -1,14 +1,4 @@
-"""Controlled Web Search Tool with Official Vietnamese Legal Domain Filtering.
-
-Modeled after Hermes Agent and OpenClaw web search tools.
-Enforces domain allow-list, cleans HTML chrome, and packages into standardized evidence strips.
-
-Backed by the TinyFish Search API (https://docs.tinyfish.ai/search-api) rather than the
-`duckduckgo_search`/`ddgs` package: the DDG HTML backend proved unreliable in this
-deployment (silently returning zero results, even for unrestricted queries, with no
-raised exception to react to). TinyFish exposes `include_domains` natively, so the
-official-domain restriction is applied server-side instead of via a `site:` OR-query hack.
-"""
+"""Controlled web search tool with official Vietnamese legal domain filtering."""
 from __future__ import annotations
 
 import os
@@ -37,12 +27,7 @@ class ControlledWebSearchInput(BaseModel):
 
 
 class ControlledWebSearchTool(BaseLegalTool):
-    """Tool for querying official Vietnamese government legal portals.
-
-    The calling agent composes `query` itself (no separate query-rewrite step) —
-    it already has the user's question, conversation history, and any prior
-    `crag_search` evidence, so it is best placed to phrase a precise search string.
-    """
+    """Tool for querying official Vietnamese government legal portals."""
 
     name: str = "controlled_web_search"
     description: str = (
@@ -100,8 +85,7 @@ def search_official_web(
     allowed_domains: Optional[Set[str]] = None,
     timeout: int = 10,
 ) -> List[Dict[str, Any]]:
-    """Execute controlled web search restricted to official government legal domains,
-    via the TinyFish Search API (`include_domains` applies the restriction server-side)."""
+    """Execute controlled web search restricted to official government legal domains."""
     domains = allowed_domains or OFFICIAL_DOMAINS
     candidates: List[Dict[str, Any]] = []
 

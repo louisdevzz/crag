@@ -1,5 +1,4 @@
-"""CRAG Tool: the single internal-knowledge tool the Agent Core can call.
-"""
+"""Internal legal knowledge retrieval tool for the CRAG agent."""
 from __future__ import annotations
 
 import os
@@ -100,26 +99,13 @@ _ARTICLE_QUERY_RE = re.compile(r"[Đđ]i[ềe]u\s*(\d+)\b")
 
 
 def _extract_article_number(query: str) -> str | None:
-    """A query naming an exact "Điều N" is a literal locator reference the user
-    typed, not a semantic judgment call — resolving it via direct lookup below
-    is the same category as `_get_catalog_evidence`'s exact SQL lookup, not
-    the keyword-based coverage heuristics removed from this file earlier."""
+    """Extract explicit article number from query if present (e.g. 'Điều 25' -> '25')."""
     match = _ARTICLE_QUERY_RE.search(query)
     return match.group(1) if match else None
 
 
 def _get_article_evidence(article_number: str, db_path: str = str(DB_PATH)) -> List[Dict[str, Any]]:
-    """Exact structural lookup for a named "Điều N": fetch every clause of it
-    directly from `document_chunks`, guaranteeing recall regardless of how the
-    fuzzy dense/BM25 ranking scores it. A verbose query that also repeats a
-    document's full title (e.g. "Điều 2 của QUY ĐỊNH VIỆC KHAI BÁO, ĐIỀU TRA,
-    THỐNG KÊ VÀ BÁO CÁO...") can dilute embedding relevance toward whichever
-    OTHER Điều repeats that dominant title phrase most, starving the actual
-    (short, narrowly-worded) Điều asked about of any evidence at all — observed
-    live: "Điều 2. Đối tượng áp dụng" was never retrieved even though the
-    query named it explicitly, and the model filled the gap with a plausible
-    but ungrounded guess from generic Vietnamese circular structure instead.
-    """
+    """Fetch all clauses of a specified article directly from document chunks."""
     if not os.path.exists(db_path):
         return []
     try:
@@ -188,11 +174,7 @@ def crag_search(query: str, db_path: str = str(DB_PATH)) -> Dict[str, Any]:
     with timed_stage(log, "RETRIEVE:REFINE", query=query[:60]):
         strips = refine_internal(query, reranked)
 
-    # Exact-locator fast path: a query naming "Điều N" gets that Điều's clauses
-    # fetched directly, ahead of whatever the fuzzy ranking above found — see
-    # `_get_article_evidence` docstring for why fuzzy ranking alone can miss it
-    # entirely. Guaranteed evidence for a literally-named provision makes this
-    # CORRECT regardless of what the fuzzy pipeline's score distribution said.
+    # Exact locator fast-path for explicitly referenced articles.
     article_number = _extract_article_number(query)
     if article_number:
         article_strips = _get_article_evidence(article_number, db_path)
@@ -212,8 +194,7 @@ def crag_search(query: str, db_path: str = str(DB_PATH)) -> Dict[str, Any]:
 
 
 class CragSearchTool(BaseLegalTool):
-    """Corrective-RAG tool over the internal legal knowledge base (Chroma dense
-    index + BM25 lexical index), fused and reranked before evaluation."""
+    """Internal legal knowledge retrieval tool with hybrid search, fusion, and reranking."""
 
     name: str = "crag_search"
     description: str = (
