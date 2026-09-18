@@ -69,14 +69,15 @@ class MemoryStore:
         sid = session_id.strip() if session_id and session_id.strip() else f"sess_{uuid.uuid4().hex[:12]}"
         with get_connection(self.db_path) as con:
             cur = con.cursor()
-            cur.execute("SELECT id FROM sessions WHERE id = ? AND client_id = ?", (sid, client_id))
-            if not cur.fetchone():
+            cur.execute("SELECT client_id FROM sessions WHERE id = ?", (sid,))
+            row = cur.fetchone()
+            if not row:
                 cur.execute(
                     "INSERT INTO sessions (id, client_id, started_at, last_active_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                     (sid, client_id),
                 )
             else:
-                cur.execute("UPDATE sessions SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?", (sid,))
+                cur.execute("UPDATE sessions SET last_active_at = CURRENT_TIMESTAMP, client_id = ? WHERE id = ?", (client_id, sid))
             con.commit()
         return sid
 

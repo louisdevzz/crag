@@ -40,7 +40,8 @@ def get_chat_model(
             resolved_m = resolve_groq_model(requested_model=m, preferred_family="qwen", api_key=api_key)
             from langchain_groq import ChatGroq
             log.info("LLM provider=groq model=%s temperature=%s -> ChatGroq client initialized", resolved_m, t)
-            return ChatGroq(model=resolved_m, temperature=t, api_key=api_key, **kwargs)
+            max_tokens = kwargs.pop("max_tokens", int(os.getenv("MAX_TOKENS", "1024")))
+            return ChatGroq(model=resolved_m, temperature=t, api_key=api_key, max_tokens=max_tokens, **kwargs)
 
         elif p == "openai":
             api_key = kwargs.pop("api_key", os.getenv("OPENAI_API_KEY"))

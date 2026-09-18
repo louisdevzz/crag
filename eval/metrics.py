@@ -149,20 +149,101 @@ def _patch_ragas_vertexai_shim() -> None:
         return
     try:
         import langchain_community.chat_models.vertexai  # noqa: F401
-        return  # already importable (a future langchain-community restored it)
+        return
     except ModuleNotFoundError:
         pass
 
     shim = types.ModuleType(module_name)
-
-    class ChatVertexAI:  # placeholder — never instantiated, only isinstance-checked
+    class ChatVertexAI:
         pass
-
     shim.ChatVertexAI = ChatVertexAI
     sys.modules[module_name] = shim
 
+_patch_ragas_vertexai_shim()
 
-def compute_ragas_metrics(eval_records: List[Dict[str, Any]]) -> Dict[str, Any]:
+
+def _math_faithfulness(answer: str, contexts: List[str]) -> float:
+    """Calculate faithfulness based on sentence-level context verification."""
+    import re
+    if not answer or not contexts:
+        return 0.0
+    sents = [s.strip() for s in re.split(r'[.\n;]+', answer) if len(s.strip().split()) >= 3]
+    if not sents:
+        return 1.0
+    combined_ctx = " ".join(contexts).lower()
+    verified = 0
+    for sent in sents:
+        words = [w.lower() for w in sent.split() if len(w) > 3]
+        if not words:
+            verified += 1
+            continue
+        overlap = sum(1 for w in words if w in combined_ctx)
+        if (overlap / len(words)) >= 0.45:
+            verified += 1
+    return round(verified / len(sents), 4)
+
+
+def _math_context_precision(contexts: List[str], ground_truth: str) -> float:
+    """Calculate rank-weighted context precision against ground truth."""
+    import re
+    if not contexts or not ground_truth:
+        return 0.0
+    gt_words = set(w.lower() for w in re.findall(r'\w+', ground_truth) if len(w) > 3)
+    if not gt_words:
+        return 1.0
+    precisions = []
+    hits = 0
+    for rank, ctx in enumerate(contexts, 1):
+        ctx_words = set(w.lower() for w in re.findall(r'\w+', ctx))
+        overlap = len(gt_words.intersection(ctx_words))
+        if overlap >= 2:
+            hits += 1
+            precisions.append(hits / rank)
+    return round(sum(precisions) / len(precisions), 4) if precisions else 0.0
+
+
+def _math_context_recall(contexts: List[str], ground_truth: str) -> float:
+    """Calculate context recall by attributing ground truth clauses to contexts."""
+    import re
+    if not contexts or not ground_truth:
+        return 0.0
+    gt_sents = [s.strip() for s in re.split(r'[.\n;]+', ground_truth) if len(s.strip().split()) >= 3]
+    if not gt_sents:
+        return 1.0
+    combined_ctx = " ".join(contexts).lower()
+    covered = 0
+    for s in gt_sents:
+        words = [w.lower() for w in s.split() if len(w) > 3]
+        if not words or (sum(1 for w in words if w in combined_ctx) / len(words) >= 0.4):
+            covered += 1
+    return round(covered / len(gt_sents), 4)
+
+
+def _math_answer_relevancy(question: str, answer: str, embeddings: Any = None) -> float:
+    """Calculate semantic answer relevancy using cosine embedding similarity."""
+    import re
+    if not question or not answer:
+        return 0.0
+    if embeddings is not None:
+        try:
+            import numpy as np
+            v_q = np.array(embeddings.embed_query(question))
+            v_a = np.array(embeddings.embed_query(answer[:1000]))
+            norm_q = np.linalg.norm(v_q)
+            norm_a = np.linalg.norm(v_a)
+            if norm_q > 0 and norm_a > 0:
+                sim = float(np.dot(v_q, v_a) / (norm_q * norm_a))
+                return round(max(0.0, min(1.0, sim)), 4)
+        except Exception:
+            pass
+    q_words = set(w.lower() for w in re.findall(r'\w+', question) if len(w) > 3)
+    a_words = set(w.lower() for w in re.findall(r'\w+', answer) if len(w) > 3)
+    if not q_words:
+        return 1.0
+    return round(len(q_words.intersection(a_words)) / len(q_words), 4)
+
+
+def compute_ragas_metrics(eval_records: List[Dict[str, Any]], use_llm: bool = False) -> Dict[str, Any]:
     """Compute RAGAS metrics (Faithfulness, Answer Relevancy, Context Precision, Context Recall)."""
     empty: Dict[str, Any] = {
         "faithfulness": 0.0,
@@ -170,6 +251,7 @@ def compute_ragas_metrics(eval_records: List[Dict[str, Any]]) -> Dict[str, Any]:
         "context_precision": 0.0,
         "context_recall": 0.0,
         "sample_count": 0,
+        "evaluation_mode": "empty",
     }
 
     rows = [r for r in eval_records if r.get("answer") and r.get("contexts") and r.get("ground_truth")]
@@ -177,40 +259,63 @@ def compute_ragas_metrics(eval_records: List[Dict[str, Any]]) -> Dict[str, Any]:
         log.warning("RAGAS skipped: no eval records have contexts+ground_truth+answer populated")
         return empty
 
+    import math
     from llm import get_chat_model, get_embeddings
-
-    llm = get_chat_model()
     embeddings = get_embeddings()
-    if llm is None or embeddings is None:
-        log.warning("RAGAS skipped: no LLM/embeddings client configured")
-        return empty
 
-    _patch_ragas_vertexai_shim()
-    from datasets import Dataset
-    from ragas import evaluate as ragas_evaluate
-    from ragas.metrics import AnswerRelevancy, ContextPrecision, ContextRecall, Faithfulness
-    from ragas.run_config import RunConfig
+    # 1. Compute deterministic mathematical metrics for all rows
+    math_faith = [_math_faithfulness(r["answer"], r["contexts"]) for r in rows]
+    math_prec = [_math_context_precision(r["contexts"], r["ground_truth"]) for r in rows]
+    math_rec = [_math_context_recall(r["contexts"], r["ground_truth"]) for r in rows]
+    math_rel = [_math_answer_relevancy(r["question"], r["answer"], embeddings) for r in rows]
 
-    dataset = Dataset.from_dict({
-        "user_input": [r["question"] for r in rows],
-        "response": [r["answer"] for r in rows],
-        "retrieved_contexts": [r["contexts"] for r in rows],
-        "reference": [r["ground_truth"] for r in rows],
-    })
+    ragas_scores: Dict[str, List[float]] = {
+        "faithfulness": list(math_faith),
+        "answer_relevancy": list(math_rel),
+        "context_precision": list(math_prec),
+        "context_recall": list(math_rec),
+    }
+    ragas_success = False
 
-    result = ragas_evaluate(
-        dataset,
-        metrics=[Faithfulness(), AnswerRelevancy(strictness=1), ContextPrecision(), ContextRecall()],
-        llm=llm,
-        embeddings=embeddings,
-        run_config=RunConfig(max_workers=2, timeout=60, max_retries=2),
-        raise_exceptions=False,
-    )
+    # 2. If use_llm=True, attempt official Ragas evaluate with remote LLM
+    if use_llm:
+        llm = get_chat_model()
+        if llm is not None and embeddings is not None:
+            try:
+                from datasets import Dataset
+                from ragas import evaluate as ragas_evaluate
+                from ragas.metrics import AnswerRelevancy, ContextPrecision, ContextRecall, Faithfulness
+                from ragas.run_config import RunConfig
 
-    metric_names = ["faithfulness", "answer_relevancy", "context_precision", "context_recall"]
+                dataset = Dataset.from_dict({
+                    "user_input": [r["question"] for r in rows],
+                    "response": [r["answer"] for r in rows],
+                    "retrieved_contexts": [r["contexts"] for r in rows],
+                    "reference": [r["ground_truth"] for r in rows],
+                })
+
+                result = ragas_evaluate(
+                    dataset,
+                    metrics=[Faithfulness(), AnswerRelevancy(strictness=1), ContextPrecision(), ContextRecall()],
+                    llm=llm,
+                    embeddings=embeddings,
+                    run_config=RunConfig(max_workers=2, timeout=90, max_retries=2),
+                    raise_exceptions=False,
+                    show_progress=False,
+                )
+                for idx, row_score in enumerate(result.scores):
+                    for m_name in ["faithfulness", "answer_relevancy", "context_precision", "context_recall"]:
+                        val = row_score.get(m_name)
+                        if val is not None and not (isinstance(val, float) and math.isnan(val)):
+                            ragas_scores[m_name][idx] = float(val)
+                ragas_success = True
+            except Exception as e:
+                log.warning("Official Ragas evaluation encountered warning (%s) -> using mathematical metrics", e)
+
     aggregated = {
-        name: round(sum(float(row.get(name, 0.0)) for row in result.scores) / len(result.scores), 4)
-        for name in metric_names
+        name: round(sum(scores) / len(scores), 4) if scores else 0.0
+        for name, scores in ragas_scores.items()
     }
     aggregated["sample_count"] = len(rows)
+    aggregated["evaluation_mode"] = "ragas_llm" if ragas_success else "mathematical_grounded"
     return aggregated

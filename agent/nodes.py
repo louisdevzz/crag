@@ -363,9 +363,9 @@ def tool_node(state: AgentState) -> Dict[str, Any]:
                     {
                         "source_id": e.get("strip_id") or e.get("locator") or e.get("evidence_id"),
                         "heading": e.get("heading", ""),
-                        "text": e.get("text", ""),
+                        "text": e.get("text", "")[:500],
                     }
-                    for e in evidence
+                    for e in evidence[:6]
                 ],
             }, ensure_ascii=False)
         else:

@@ -1,343 +1,1888 @@
-# Tài liệu Kỹ thuật Hệ thống — Legal CRAG Assistant (Technical Documentation)
+# Technical Documentation — Legal CRAG Assistant
 
-> **Tài liệu đặc tả toàn diện về công nghệ, kiến trúc mã nguồn, giải thuật truy hồi lai, hệ thống tác tử LangGraph và cơ chế bảo vệ an toàn được triển khai trong dự án.**
-
----
-
-## MỤC LỤC
-
-1. [Tôn chỉ Kỹ thuật & Các Bất biến Hệ thống](#1-tôn-chỉ-kỹ-thuật--các-bất-biến-hệ-thống)
-2. [Kiến trúc Tổng thể 3 Layer](#2-kiến-trúc-tổng-thể-3-layer)
-3. [Bảng Tổng hợp Ngăn xếp Công nghệ (Full Tech Stack)](#3-bảng-tổng-hợp-ngăn-xếp-công-nghệ-full-tech-stack)
-4. [Tầng Cấu hình Type-Safe & LLM Provider Factory](#4-tầng-cấu-hình-type-safe--llm-provider-factory)
-5. [Tầng Điều phối Tác tử LangGraph (Agent Orchestration)](#5-tầng-điều-phối-tác-tử-langgraph-agent-orchestration)
-6. [Hệ thống Công cụ & Thiết kế Schema-Driven (Hermes & OpenClaw Patterns)](#6-hệ-thống-công-cụ--thiết-kế-schema-driven-hermes--openclaw-patterns)
-7. [Hạ tầng Truy hồi Lai & Thuật toán Xếp hạng (Hybrid Retrieval & Ranking)](#7-hạ-tầng-truy-hồi-lai--thuật-toán-xếp-hạng-hybrid-retrieval--ranking)
-8. [Bộ Tiền xử lý Dữ liệu Vạn năng & Vision LLM OCR](#8-bộ-tiền-xử-lý-dữ-liệu-vạn-năng--vision-llm-ocr)
-9. [Quản lý Session Memory 3 Tầng & Cam kết Cách ly Tuyệt đối](#9-quản-lý-session-memory-3-tầng--cam-kết-cách-ly-tuyệt-đối)
-10. [Bộ Đánh giá Benchmark & Các Công thức Toán học Đo lường](#10-bộ-đánh-giá-benchmark--các-công-thức-toán-học-đo-lường)
-11. [Kiến trúc Giao diện Người dùng Next.js 14 (Frontend Architecture)](#11-kiến-trúc-giao-diện-người-dùng-nextjs-14-frontend-architecture)
+> Tài liệu kỹ thuật dành cho developer, mô tả cấu trúc mã nguồn, ranh giới module, vòng đời một lượt Agent, Tool Contract, CRAG retrieval, persistence, ingestion và các bất biến kỹ thuật của hệ thống.
+>
+> Tài liệu này **không phải hướng dẫn cài đặt** và **không lặp lại workflow ở mức người dùng**.  
+> Cài môi trường xem [INSTALL.md](INSTALL.md), cách chạy xem [SETUP_AND_RUN.md](SETUP_AND_RUN.md), workflow tổng thể xem [WORKFLOW.md](WORKFLOW.md), kiến trúc Knowledge Base xem [KNOWLEDGE_BASE.md](KNOWLEDGE_BASE.md).
 
 ---
 
-## 1. Tôn chỉ Kỹ thuật & Các Bất biến Hệ thống
+## 1. Mục đích và phạm vi
 
-Hệ thống Legal CRAG Assistant được xây dựng nhằm giải quyết triệt để vấn đề **ảo giác (*hallucination*)** trong bài toán hỏi đáp văn bản quy phạm pháp luật. Mọi thành phần trong mã nguồn đều phải tuân thủ 4 bất biến (*System Invariants*):
+`TECHNICAL.md` trả lời các câu hỏi ở mức implementation:
 
-1. **Không Ảo giác Trích dẫn (Zero Hallucinated Citations):**  
-   Mọi mệnh đề kết luận pháp lý sinh ra bắt buộc phải có `source_id` tương ứng tồn tại trong tập bằng chứng thực tế (*Evidence Map*). Bộ kiểm định trích dẫn xác định (*Deterministic Citation Validator*) chạy độc lập sau bước sinh để phát hiện và chặn đứng mọi vi phạm.
-2. **Tính Đúng đắn theo Thời gian (Temporal Correctness):**  
-   Mọi văn bản trích dẫn phải được kiểm tra đối chiếu hiệu lực tại ngày tham chiếu `as_of_date`. Các văn bản hết hiệu lực hoặc chưa có hiệu lực tại ngày này bị từ chối làm căn cứ.
-3. **Cách ly Dữ liệu Tuyệt đối (Cross-client Contamination = 0):**  
-   Dữ liệu lịch sử, phiên chat và bộ nhớ của Client A tuyệt đối không bao giờ được truy cập bởi Client B. Mọi truy vấn SQLite đều sử dụng tham số ràng buộc `client_id`.
-4. **Ranh giới Memory Rõ ràng (Memory Guardrail):**  
-   Thông tin doanh nghiệp trong Semantic Memory chỉ có giá trị giải tham chiếu đại từ (ví dụ: *"công ty tôi"* $\to$ Công ty TNHH tại Long An); tuyệt đối **không bao giờ được xem là nguồn căn cứ pháp lý**. Mọi phán quyết đều phải truy hồi lại từ văn bản luật hiện hành.
+- Agent Runtime bắt đầu và kết thúc một turn ở đâu?
+- `AgentState` chứa những gì?
+- LangGraph thực sự có bao nhiêu node?
+- Agent gọi tool theo cơ chế nào?
+- `crag_search` làm gì bên trong?
+- SQLite, Chroma và BM25 liên kết với nhau ra sao?
+- History khác Memory thế nào?
+- Ingestion worker đưa một document từ upload đến `READY` như thế nào?
+- Provider LLM, Vision và Embedding được tách ra sao?
+- Citation Validator kiểm tra điều gì?
+- Thành phần nào là source of truth và thành phần nào chỉ là index có thể rebuild?
 
----
-
-## 2. Kiến trúc Tổng thể 3 Layer
-
-Hệ thống áp dụng kiến trúc 3 tầng tách biệt (*Separation of Concerns*):
-
-- **Layer 1 — Interface & API:**  
-  - Next.js 14 + TypeScript phục vụ giao diện Web người dùng.
-  - FastAPI cung cấp RESTful API Gateway (`/api/chat`, `/api/history`, `/api/memory`, `/api/documents`).
-- **Layer 2 — Agent & Correction:**  
-  - LangGraph điều phối đồ thị trạng thái `StateGraph(AgentState)`.
-  - Router phân luồng, Retrieval Evaluator chấm điểm, 3 nhánh xử lý CRAG, Generator và Citation Validator.
-- **Layer 3 — Knowledge & Data:**  
-  - SQLite (`~/.crag/app.db`) quản lý metadata văn bản, quan hệ sửa đổi/thay thế, session logs và client memories (tách rời hoàn toàn khỏi repo mã nguồn).
-  - ChromaDB (`~/.crag/chroma`) lưu trữ Dense Vector Index.
-  - rank-bm25 lưu trữ Lexical Index.
-  - Controlled Web Search với danh mục tên miền công quyền cho phép (`vbpl.vn`, `chinhphu.vn`...).
+Kiến trúc hiện tại là **Agentic CRAG theo ReAct loop**. Không còn Semantic Router phân loại `database/rag/general` trước khi vào graph và không có Database Tool riêng cho Agent.
 
 ---
 
-## 3. Bảng Tổng hợp Ngăn xếp Công nghệ (Full Tech Stack)
+## 2. Kiến trúc tổng thể
 
-| Khối Chức năng | Công nghệ / Thư viện | Phiên bản | Vai trò & Lý do Lựa chọn |
-|---|---|---|---|
-| **Ngôn ngữ Nền tảng** | Python | `>=3.12.3` | Nền tảng cho toàn bộ backend, AI agent, và data pipeline. |
-| **Node.js Runtime** | Node.js | `22.23.2` | Runtime chạy Next.js frontend, quản lý phiên bản qua `.prototools`. |
-| **Quản lý Gói Frontend** | `pnpm` | `12.4.2` | Quản lý gói frontend hiệu năng cao, tối ưu lưu trữ và tốc độ cài đặt qua `.prototools`. |
-| **Điều phối Tác tử** | `langgraph` | `>=0.2.0` | Quản lý đồ thị trạng thái có chu trình, rẽ nhánh điều kiện và checkpointing. |
-| **Khung Tác tử** | `langchain`, `langchain-core` | `>=0.3.0` | Quản lý prompts, message schemas, runnable chains và model interfaces. |
-| **LLM Cloud (Free Tier)** | `groq` SDK + `langchain-groq` | `0.37.1` / `1.1.3` | Suy luận LPU siêu tốc; model mặc định `qwen/qwen3.8-27b` (miễn phí, hỗ trợ tool use, JSON mode). |
-| **Xác thực & Schemas** | `pydantic` | `2.13.5` | Xác thực kiểu dữ liệu nghiêm ngặt cho Config, Tools, Input/Output schemas. |
-| **API Gateway** | `fastapi`, `uvicorn[standard]` | `>=0.115` | RESTful API hiệu năng cao trên nền ASGI, hỗ trợ CORS và static hosting. |
-| **Vector Database** | `chromadb`, `langchain-chroma` | `>=0.5.0` | Kho lưu trữ dense vector nhúng cục bộ, tìm kiếm tương đồng ngữ nghĩa. |
-| **Lexical Retrieval** | `rank-bm25` (BM25Okapi) | `>=0.2.2` | Tìm kiếm từ khóa chính xác, bù đắp số hiệu văn bản và số Điều/Khoản. |
-| **Hợp nhất Xếp hạng** | Reciprocal Rank Fusion (RRF) | Custom ($k=60$) | Giải thuật hợp nhất danh sách xếp hạng Dense và Lexical không cần scale điểm. |
-| **Mô hình Chấm điểm** | Cross-Encoder Sigmoid | Custom / BGE | Đánh giá relevance score chuẩn hóa $[0, 1]$ cho 3 nhánh rẽ CRAG. |
-| **Cơ sở Dữ liệu Quan hệ** | SQLite (`sqlite3`) | Built-in | Quản lý 8 bảng metadata văn bản, quan hệ điều luật, session và memory. |
-| **Xử lý PDF** | `pymupdf` (PyMuPDF) | `>=1.28.2` | Trích xuất văn bản số hóa tốc độ cao và render trang scan ảnh. |
-| **Xử lý Ảnh** | `pillow` (PIL) | `>=12.3.0` | Xử lý ảnh raster, kiểm soát kênh alpha và xuất ảnh nền trắng đục 100%. |
-| **Cào Dữ liệu Web** | `beautifulsoup4`, `requests` | `>=4.12` | Bóc tách HTML, loại bỏ scripts/styles, lấy nội dung pháp luật sạch. |
-| **Tìm kiếm Web Ngoài** | TinyFish Search API (`requests`) | — | Thực thi tìm kiếm web theo tên miền công quyền cho phép, lọc `include_domains` phía server. |
-| **Giao diện Người dùng** | Next.js (App Router), React | `14.2.24` / `18.3` | Single Page Application với TypeScript, Tailwind CSS, Lucide icons. |
-| **CSS Framework** | `tailwindcss`, `postcss` | `3.4.19` | Hệ thống styling tiện ích với các badge màu sắc CRAG chuyên dụng. |
+Hệ thống có hai runtime flow độc lập dùng chung lớp dữ liệu:
 
----
-
-## 4. Tầng Cấu hình Type-Safe & LLM Provider Factory
-
-### 4.1. Hệ thống Cấu hình Pydantic Phân cấp (`config.py`)
-Toàn bộ tham số hệ thống được quản lý bằng các `BaseModel` Pydantic lồng nhau, tự động xác thực kiểu dữ liệu và đọc override từ biến môi trường, thay thế hoàn toàn các biến toàn cục phẳng không kiểm tra kiểu:
-
-```python
-class AppConfig(BaseModel):
-    llm: LLMConfig = Field(default_factory=LLMConfig)
-    retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
-    crag: CRAGConfig = Field(default_factory=CRAGConfig)
-    security: SecurityConfig = Field(default_factory=SecurityConfig)
-    paths: PathConfig = Field(default_factory=PathConfig)
-
-CONFIG = AppConfig()
+```text
+                         Legal CRAG Assistant
+                                  │
+                    ┌─────────────┴─────────────┐
+                    │                           │
+                    ▼                           ▼
+               Chat Runtime                Admin Runtime
+                    │                           │
+              Agent Runtime                Ingestion API
+                    │                           │
+             Context Manager              Background Worker
+                    │                           │
+               Agent Core                 Ingestion Pipeline
+                    │                           │
+              Tool Registry                     │
+              ┌─────┴─────┐                    │
+              ▼           ▼                    │
+         crag_search   controlled_web_search    │
+              │                                │
+              └──────────────┬─────────────────┘
+                             ▼
+                      Shared Data Layer
+                  ┌──────────┼──────────┐
+                  ▼          ▼          ▼
+                SQLite     Chroma      BM25
 ```
 
-| Sub-model | Trách nhiệm quản lý |
+### Chat Runtime
+
+```text
+HTTP / CLI / Eval
+       ↓
+agent.runtime.prepare_turn()
+       ↓
+Context Manager
+       ↓
+LangGraph Agent Core
+       ↓
+Agent ⇄ Tools
+       ↓
+Citation Validator
+       ↓
+agent.runtime.persist_turn()
+```
+
+### Admin Runtime
+
+```text
+Upload
+  ↓
+FastAPI Admin Endpoint
+  ↓
+Background Worker
+  ↓
+Parse / OCR
+  ↓
+Cleaning
+  ↓
+Structuring
+  ↓
+Chunking
+  ↓
+Embedding
+  ↓
+Chroma Index
+  ↓
+BM25 Index
+  ↓
+READY
+```
+
+---
+
+## 3. Runtime và Tech Stack
+
+Môi trường phát triển của project được chuẩn hóa như sau:
+
+| Thành phần | Vai trò |
 |---|---|
-| `LLMConfig` | `provider`, `model`, `temperature`, base URLs của Ollama/OpenRouter, bảng `default_models` theo từng provider. |
-| `RetrievalConfig` | `embedding_model`, `reranker_model`, `top_k_dense`, `top_k_bm25`, `top_k_rerank`, `rrf_k`. |
-| `CRAGConfig` | Ngưỡng quyết định 3 nhánh: `t_low`, `t_high`, `internal_strip_min`. |
-| `SecurityConfig` | Danh mục tên miền công quyền cho phép (`official_domains`) và danh mục khóa Memory cho phép (`allowed_memory_keys`). |
-| `PathConfig` | Toàn bộ đường dẫn thư mục dữ liệu, database, Chroma, tập eval. |
+| Python 3.13 | Backend, Agent, retrieval, ingestion |
+| `uv` | Python environment và dependency management |
+| FastAPI | REST API |
+| LangGraph | Agent orchestration |
+| LangChain | Model/message/tool interfaces |
+| SQLite | Canonical relational storage |
+| ChromaDB | Dense vector index |
+| `rank-bm25` | Lexical index |
+| BGE-M3 | Embedding mặc định |
+| BGE Reranker v2 M3 | Reranker mặc định |
+| Next.js 14 + React 18 | Frontend |
+| pnpm 11.18.0 | Frontend package manager |
+| LangFuse | Optional tracing/observability |
 
-Module xuất thêm các alias cấp module (`LLM_PROVIDER`, `T_LOW`, `DB_PATH`...) để tương thích ngược với mọi import cũ trong dự án mà không cần sửa lại từng file gọi.
-
-### 4.2. LLM Provider Factory Đa Nhà cung cấp (`llm.py`)
-Hàm `get_chat_model(provider, model, temperature)` triển khai mô hình **Pluggable Provider Pattern**, hỗ trợ 4 nhà cung cấp không cần sửa mã tác tử: `groq`, `openai`, `openrouter`, `ollama`. Mỗi nhánh provider tự bọc `try/except`; thiếu API key hoặc lỗi khởi tạo trả về `None` thay vì crash, cho phép toàn hệ thống fallback êm sang chế độ tổng hợp câu trả lời xác định (*Deterministic Offline Synthesis*) tại `agent/nodes.py::generate_answer`.
-
-### 4.3. Bộ Phân Giải Model Free Động cho Groq (`providers/groq_models.py`)
-Do danh mục model miễn phí của Groq thay đổi liên tục (một số model bị deprecate khỏi free/developer tier), hệ thống không hardcode một model Groq cố định mà triển khai cơ chế **fetch và phân giải động**:
-
-- **`fetch_groq_models(api_key)`:** Gọi `groq.Groq(api_key).models.list()` để lấy danh sách model đang active thực tế từ API, có cache trong bộ nhớ 1 giờ (`_CACHE_TTL_SECONDS`) để tránh gọi lại không cần thiết.
-- **`DEFAULT_FREE_MODELS_FALLBACK`:** Danh mục Free Plan của Groq (cập nhật 2026-09-11), xếp theo thứ tự ưu tiên:
-
-  | Model ID trên Groq | Mục đích | Free limit |
-  |---|---|---|
-  | `qwen/qwen3.8-27b` ⭐ | **Model mặc định** — Reasoning, coding, học thuật, hỗ trợ tool use/JSON mode/remote MCP | 30 RPM / 1.000 RPD / 200K token/ngày |
-  | `openai/gpt-oss-120b` | Heavy cloud fallback — reasoning mạnh + web/browser search, code execution tích hợp | 30 RPM / 1.000 RPD / 200K token/ngày |
-  | `qwen/qwen3.6-27b` | Coding, agent, tool calling | 30 RPM / 1.000 RPD / 200K token/ngày |
-  | `openai/gpt-oss-20b` | Phương án nhẹ, nhanh hơn 120B | 30 RPM / 1.000 RPD / 200K token/ngày |
-  | `groq/compound` | Agent tích hợp sẵn web search + code execution | 30 RPM / 250 RPD |
-  | `groq/compound-mini` | Biến thể agent nhẹ hơn | 30 RPM / 250 RPD |
-
-- **`DEPRECATED_MODELS`:** Tập hợp các model đã bị Groq gỡ khỏi free/developer tier (07–08/2026): `llama-3.1-8b-instant`, `llama-3.3-70b-versatile`, `qwen-2.5-32b`, `qwen-qwq-32b`, `qwen/qwen3-32b`, `llama-4-scout`, `gemma2-9b-it`, `mixtral-8x7b-32768`. Các model này bị loại khỏi kết quả `fetch_groq_models` và tự động remap về `qwen/qwen3.8-27b` nếu người dùng cấu hình nhầm.
-- **`resolve_groq_model(requested_model, preferred_family="qwen")`:** Thuật toán phân giải 3 bước:
-  1. Nếu người dùng chỉ định model cụ thể và model đó không nằm trong `DEPRECATED_MODELS` $\to$ dùng nguyên văn.
-  2. Nếu là alias tổng quát (`"auto"`, `"free"`, `"qwen"`, `""`) hoặc model đã deprecate $\to$ đối chiếu danh sách model đang active (từ API hoặc fallback tĩnh) theo đúng thứ tự ưu tiên trong `DEFAULT_FREE_MODELS_FALLBACK`, trả về `qwen/qwen3.8-27b` nếu khả dụng.
-  3. Nếu không có model Qwen nào khả dụng $\to$ tìm kiếm mờ theo `preferred_family`, cuối cùng fallback về phần tử đầu của danh mục.
-- **Kiến trúc Local + Cloud song song:** Đề xuất vận hành đối xứng — Ollama cục bộ chạy `qwen3.8:latest` (offline, bảo mật dữ liệu) khi GPU rảnh, tự động chuyển sang Groq `qwen/qwen3.8-27b` (cloud, miễn phí) khi cần fallback hoặc GPU đang bận tác vụ khác.
-
-### 4.4. Quản lý Mô hình Nhúng Thực tế & Bộ Tải Trọng số (scripts/pull_models.py)
-Hệ thống loại bỏ hoàn toàn cơ chế nhúng giả lập (*dummy hash fallback*) để đảm bảo 100% độ chính xác của không gian vector ngữ nghĩa. Mọi tác vụ truy hồi bắt buộc phải sử dụng mô hình embedding thực tế (mặc định: BAAI/bge-m3 đa ngôn ngữ chất lượng cao).
-- **Script tải mô hình:** python scripts/pull_models.py hỗ trợ kéo sẵn trọng số mô hình từ Hugging Face Hub (hoặc Ollama), tự động tối ưu hóa dung lượng (bỏ qua định dạng dư thừa như ONNX/Flax) và chạy kiểm định vector (dimension, forward pass) trước khi đưa vào vận hành.
-- **Xử lý lỗi nghiêm ngặt:** Nếu mô hình chưa được tải hoặc dịch vụ embedding không khả dụng, hệ thống sẽ báo lỗi rõ ràng kèm hướng dẫn chạy script tải thay vì âm thầm sử dụng vector giả.
+`pyproject.toml` hiện cho phép Python `>=3.12`; tài liệu vận hành chuẩn hóa môi trường dự án bằng **Python 3.13**.
 
 ---
 
-## 5. Tầng Điều phối Tác tử LangGraph (Agent Orchestration)
+## 4. Repository Map
 
-Kiến trúc tác tử tuân thủ 100% tài liệu hướng dẫn chính thức của **[LangGraph Overview](https://docs.langchain.com/oss/python/langgraph/overview)**:
+Các module chính:
 
-### 5.1. Sơ đồ Trạng thái (`AgentState`)
-Định nghĩa tại `agent/state.py` dưới dạng `TypedDict`:
-```python
-class AgentState(TypedDict, total=False):
-    client_id: str
-    session_id: str
-    query: str
-    as_of_date: Optional[str]
-    memory_context: str
-    route: str                      # 'database' | 'rag' | 'general'
-    dense_candidates: List[Dict[str, Any]]
-    bm25_candidates: List[Dict[str, Any]]
-    candidates: List[Dict[str, Any]]          # Sau RRF và Top-K Rerank
-    relevance_scores: List[float]             # Điểm Sigmoid [0.0, 1.0]
-    crag_action: str                          # 'CORRECT' | 'AMBIGUOUS' | 'INCORRECT'
-    internal_evidence: List[Dict[str, Any]]
-    rewritten_query: str
-    external_evidence: List[Dict[str, Any]]
-    evidence: List[Dict[str, Any]]            # Danh sách bằng chứng hợp nhất
-    generation: Dict[str, Any]                # answer, claims, abstain
-    citation_report: Dict[str, Any]           # Báo cáo kiểm định trích dẫn
-    trace_meta: Dict[str, Any]
+```text
+crag/
+├── agent/
+│   ├── graph.py
+│   ├── state.py
+│   ├── nodes.py
+│   ├── runtime.py
+│   ├── context.py
+│   ├── prompts.py
+│   ├── streaming.py
+│   └── followups.py
+│
+├── tools/
+│   ├── base.py
+│   ├── registry.py
+│   ├── crag_search.py
+│   └── web_search.py
+│
+├── retrieval/
+│   ├── dense.py
+│   ├── bm25.py
+│   ├── fusion.py
+│   ├── reranker.py
+│   └── refine.py
+│
+├── ingestion/
+│   ├── pipeline.py
+│   ├── worker.py
+│   ├── indexer.py
+│   ├── documents.py
+│   ├── chunks.py
+│   └── jobs.py
+│
+├── legal/
+│   ├── preprocessor.py
+│   ├── cleaner.py
+│   ├── parser.py
+│   ├── citations.py
+│   └── temporal.py
+│
+├── memory/
+│   ├── store.py
+│   └── extractor.py
+│
+├── providers/
+│   └── ...
+│
+├── api/
+│   └── main.py
+│
+├── frontend/
+│   └── ...
+│
+├── config.py
+├── llm.py
+├── monitoring.py
+├── logging_config.py
+├── schema.sql
+└── main.py
 ```
 
-### 5.2. Ranh giới Đồ thị và Luồng Rẽ Nhánh
-Được xây dựng trong `agent/graph.py` với các nút ranh giới chính thức:
-- **`START` $\to$ `router`:** Điểm bắt đầu nhận query từ người dùng.
-- **`router` $\to$ Conditional Edge:**
-  - `"database"` $\to$ `db` $\to$ `cite_validate`
-  - `"rag"` $\to$ `retrieve` $\to$ `evaluate`
-  - `"general"` $\to$ `generate`
-- **`evaluate` $\to$ Conditional Edge (3 Nhánh CRAG):**
-  - `"CORRECT"` $\to$ `refine` $\to$ `generate`
-  - `"AMBIGUOUS"` $\to$ `refine` $\to$ `rewrite` $\to$ `web` $\to$ `select_web` $\to$ `merge` $\to$ `generate`
-  - `"INCORRECT"` $\to$ `rewrite` $\to$ `web` $\to$ `select_web` $\to$ `generate`
-- **`generate` $\to$ `cite_validate` $\to$ `END`:** Điểm kết thúc chu trình tác tử.
+### Ranh giới trách nhiệm
 
-### 5.3. Quản lý Trạng thái Phiên qua Checkpointer
-Sử dụng `MemorySaver()` của LangGraph để lưu vết trạng thái theo từng thread:
-```python
-from langgraph.checkpoint.memory import MemorySaver
-
-app = g.compile(checkpointer=MemorySaver())
-```
-Hàm tiện ích `invoke_crag()` chuẩn hóa việc truyền `thread_id`:
-```python
-config = {"configurable": {"thread_id": session_id}}
-result = app.invoke(state_input, config=config)
-```
+| Module | Trách nhiệm |
+|---|---|
+| `agent/` | Điều phối một turn hội thoại |
+| `tools/` | Capability mà Agent được phép gọi |
+| `retrieval/` | Dense/BM25/RRF/Rerank/Refine |
+| `ingestion/` | Đưa tài liệu vào Knowledge Base |
+| `legal/` | Parse, clean, citation, temporal logic |
+| `memory/` | Session, message history, semantic memory |
+| `providers/`, `llm.py` | Model/provider abstraction |
+| `api/` | HTTP boundary |
+| `frontend/` | Chat và Admin UI |
 
 ---
 
-## 6. Hệ thống Công cụ & Thiết kế Schema-Driven (Hermes & OpenClaw Patterns)
+# 5. Agent Runtime
 
-Lấy cảm hứng từ kiến trúc của **Hermes Agent** (`tools/web_tools.py`) và **OpenClaw** (`src/agents/tools/`), toàn bộ hệ thống công cụ đã được tái cấu trúc:
+## 5.1. Entry point của một turn
 
-### 6.1. Lớp Cơ sở `BaseLegalTool` (`tools/base.py`)
-Mọi tool đều kế thừa từ `BaseLegalTool`, bắt buộc khai báo Pydantic `args_schema` để tự động xác thực dữ liệu đầu vào và đóng gói kết quả trong `ToolResult`:
-```python
-class ToolResult(BaseModel):
-    tool_name: str
-    success: bool
-    data: Any = None
-    error: Optional[str] = None
-    execution_time_ms: float = 0.0
+`agent/runtime.py` là entry point dùng chung cho một lượt hội thoại.
+
+Hai hàm chính:
+
+```text
+prepare_turn()
+persist_turn()
 ```
 
-### 6.2. Tool Truy vấn Cơ sở Dữ liệu (`tools/database.py`)
-- Kế thừa `BaseLegalTool` với schema `DatabaseQueryInput(query, document_number, as_of_date)`.
-- Tự động nhận diện số hiệu văn bản bằng regex linh hoạt không hardcode.
-- Kiểm tra quan hệ văn bản (`replaces`, `guides`, `amends`).
+Flow:
 
-### 6.3. Tool Tìm kiếm Web Có Kiểm soát (`tools/web_search.py`)
-- Kế thừa `BaseLegalTool` với schema `ControlledWebSearchInput(query, max_results, allowed_domains)`.
-- Áp dụng bộ lọc tên miền chính thống: `{"vbpl.vn", "vanban.chinhphu.vn", "moj.gov.vn", "chinhphu.vn", "thuvienphapluat.vn"}`.
-- Bóc tách nội dung HTML sạch bằng BeautifulSoup, cắt tỉa thông minh để tránh tràn context.
+```text
+query
+  ↓
+prepare_turn()
+  ├── resolve client
+  ├── resolve/create session
+  ├── extract semantic memory
+  └── build context
+  ↓
+Agent Core
+  ↓
+persist_turn()
+  ├── save user message
+  └── save assistant message
+```
 
-### 6.4. Đăng ký & Tự Khám phá Công cụ (`tools/registry.py`)
-- `ToolRegistry`: Quản lý danh sách các tool khả dụng, hỗ trợ:
-  - `registry.execute("tool_name", **kwargs)`
-  - `registry.to_openai_tools()`: Tự động xuất schema JSON Function Calling phục vụ LLM tool calling.
-
-### 6.5. Bộ Điều Hướng Ngữ Nghĩa Động (`agent/router.py`)
-- Thay thế hoàn toàn danh sách từ khóa tĩnh `db_triggers` bằng `SemanticRouter` và Pydantic model `RouteIntent`.
-- Sử dụng mô hình Intent Classification khi có LLM, và `RouterPolicy` cấu hình mở khi offline.
-
----
-
-## 7. Hạ tầng Truy hồi Lai & Thuật toán Xếp hạng (Hybrid Retrieval & Ranking)
-
-### 7.1. Dense Semantic Retrieval (`retrieval/dense.py`)
-- Kết nối tới bộ sưu tập `legal_corpus_v1` trong ChromaDB.
-- Sinh vector đặc trưng ngữ nghĩa L2-normalized (384 chiều) hoặc qua BGE-M3 khi có Ollama.
-
-### 7.2. Lexical Retrieval (`retrieval/bm25.py`)
-- Sử dụng thuật toán `BM25Okapi` trên kho token tiếng Việt đã chuẩn hóa.
-- Đảm bảo tìm kiếm chính xác tuyệt đối các từ khóa then chốt như số hiệu điều luật (`Điều 25`, `Khoản 1`, `59/2020/QH14`).
-
-### 7.3. Reciprocal Rank Fusion (RRF) (`retrieval/fusion.py`)
-Hợp nhất hai danh sách xếp hạng từ Dense và BM25 theo công thức:
-$$S_{\text{RRF}}(d) = \sum_{r \in \mathcal{R}} \frac{1}{k + \text{rank}_r(d)} \quad (\text{với } k = 60)$$
-Công thức này khử độ lệch thang điểm giữa Cosine Similarity và BM25 log-odds, tạo ra thứ hạng công bằng và ổn định.
-
-### 7.4. Cross-Encoder Reranker & Chuẩn hóa Sigmoid (`retrieval/reranker.py`)
-- Chấm điểm từng cặp `(query, document_chunk)` qua mô hình Cross-Encoder.
-- Chuẩn hóa điểm raw logit về đoạn xác suất $[0.0, 1.0]$ bằng hàm Sigmoid:
-$$P(\text{Relevant}) = \sigma(x) = \frac{1}{1 + e^{-x}}$$
-- Phân loại 3 nhánh CRAG dựa trên 2 ngưỡng tối ưu đã được hiệu chuẩn qua quét lưới (*Grid Search*):
-  - $Score \ge T_{high} = 0.80 \;\longrightarrow\;$ `CORRECT`
-  - $0.40 \le Score < 0.80 \;\longrightarrow\;$ `AMBIGUOUS`
-  - $Score \le T_{low} = 0.40 \;\longrightarrow\;$ `INCORRECT`
-
-### 7.5. Tinh Lọc Tri Thức & Hợp Nhất Bằng Chứng (`retrieval/refine.py`)
-- **Knowledge Refinement:** Phân rã đoạn văn bản dài thành từng *Legal Strip* (từng Khoản/Điểm cụ thể), chấm lại điểm và chỉ giữ lại các strip đạt ngưỡng $\ge \text{INTERNAL\_STRIP\_MIN} = 0.40$.
-- **Evidence Merging:** Hợp nhất bằng chứng nội bộ và ngoài web, sắp xếp theo thứ tự ưu tiên:
-  $$\text{Ưu tiên: Nguồn nội bộ chính thống (priority=2) } > \text{ Nguồn bổ trợ ngoài (priority=1) } > \text{ Điểm Score}$$
-
-### 7.6. Viết lại Truy vấn Động (`retrieval/rewriter.py`)
-- `QueryRewriter`: Thay thế danh sách `stop_phrases` tĩnh cũ bằng suy luận LLM structured output khi khả dụng, hoặc chuẩn hóa ngữ pháp giữ lại thực thể pháp lý cốt lõi khi offline, trả về schema `RewrittenQuery(search_query, legal_entities, domain_filter)`.
+`invoke_crag()` ghép toàn bộ flow trên cho CLI hoặc các caller không cần tự điều phối.
 
 ---
 
-## 8. Bộ Tiền xử lý Dữ liệu Vạn năng & Vision LLM OCR
+## 5.2. Context Manager
 
-Module `legal/preprocessor.py` được thiết kế để xử lý bất kỳ văn bản pháp luật nào trong thư mục `data/`:
+`agent/context.py` chỉ chịu trách nhiệm **lắp context hội thoại**, không retrieval luật.
 
-1. **Văn bản Số hóa (Digital Text PDF):**  
-   Trích xuất văn bản tức thì qua `pymupdf` (đã kiểm chứng xử lý 88 trang PDF trong 0.27 giây).
-2. **Văn bản Scan Ảnh (Scanned Signed PDF):**  
-   - Tự động nhận diện các trang không có text layer.
-   - Render trang thành ảnh PNG lưu tại `data/processed/scanned_pages/` (tuần tự, CPU-only, tức thì).
-   - Gọi **Vision LLM** (`gpt-4o-mini`, `qwen/qwen3.8-27b`, hoặc `qwen2-vl`) để OCR thành văn bản nguyên gốc — các trang cần OCR chạy **song song** qua tối đa `OCR_CONCURRENCY` (mặc định 4) worker thread, vì bottleneck thật của một PDF scan nhiều trang là round-trip mạng gọi Vision LLM (giây/trang), không phải việc render ảnh.
-   - Lưu cache kết quả OCR tại `data/processed/ocr_cache/` để không bao giờ gọi lại API cho cùng một trang.
-3. **Legal-aware Chunking:**  
-   Bóc tách cấu trúc theo đúng thứ bậc: `Chương -> Điều -> Khoản -> Điểm`. Gán nhãn `locator` xác định cho từng đoạn trích phục vụ trích dẫn minh bạch.
+```text
+SQLite messages
+      │
+      ├── recent messages
+      │
+      └── semantic memories
+      │
+      ▼
+Context Manager
+      │
+      ├── conversation_history
+      └── memory_context
+```
 
----
+History được lấy từ `messages` theo `session_id`.
 
-## 9. Quản lý Session Memory 3 Tầng & Cam kết Cách ly Tuyệt đối
+Memory được lấy từ `memories` theo `client_id`.
 
-Hệ thống phân tầng bộ nhớ theo Chapter 5 của tài liệu hướng dẫn:
+Hai loại dữ liệu này không được trộn vai trò:
 
-1. **Tier 1 — Working Memory:** Trạng thái trong RAM của phiên truy vấn hiện tại (`AgentState`).
-2. **Tier 2 — Episodic Memory:** Bảng `query_logs` trong SQLite lưu vết toàn bộ câu hỏi, câu trả lời, route, crag_action và thời gian.
-3. **Tier 3 — Semantic Profile:** Bảng `client_memories` lưu thuộc tính doanh nghiệp theo danh mục cho phép `ALLOWED_MEMORY_KEYS`:
-   - `business_type`, `province`, `industry`, `frequent_topic`, `preferred_answer`.
+```text
+History = nội dung hội thoại gần đây
+Memory  = hồ sơ ngữ nghĩa dài hạn
+Evidence = căn cứ pháp lý đã retrieve
+```
 
-### Bộ Trích Xuất Động (Dynamic Memory Extractor — `memory/extractor.py`)
-- Loại bỏ hoàn toàn danh sách tĩnh 63 tỉnh thành hay các mảng cố định.
-- Sử dụng mô hình trích xuất động dựa trên cấu trúc ngữ pháp danh từ riêng viết hoa của địa danh tiếng Việt và phân tích loại hình doanh nghiệp, kết hợp LLM structured output.
-- **Kiểm định An toàn:** Cam kết chỉ số **Cross-client Contamination = 0** (dữ liệu của Client A không bao giờ rò rỉ sang Client B trong toàn bộ quá trình truy vấn).
-
----
-
-## 10. Bộ Đánh giá Benchmark & Các Công thức Toán học Đo lường
-
-Module `eval/run_eval.py` và `eval/metrics.py` cài đặt đầy đủ các công thức đo lường chuẩn mực của Chương 4:
-
-### 10.1. Chỉ số Truy hồi (Retrieval Metrics)
-- **Recall@K:** Tỷ lệ tìm thấy đúng điều khoản trong top-K:
-  $$\text{Recall@K} = \frac{|\text{Retrieved@K} \cap \text{Expected}|}{|\text{Expected}|}$$
-- **MRR (Mean Reciprocal Rank):** Vị trí nghịch đảo của tài liệu liên quan đầu tiên:
-  $$\text{MRR} = \frac{1}{|Q|} \sum_{i=1}^{|Q|} \frac{1}{\text{rank}_i}$$
-
-### 10.2. Chỉ số Điều hướng & Fallback (Routing & Fallback Metrics)
-- **Fallback Precision (Công thức 4.1):**
-  $$\text{Fallback Precision} = \frac{\text{Số lần gọi Web đúng khi ngoài corpus}}{\text{Tổng số lần hệ thống kích hoạt Web Search}}$$
-- **Fallback Recall (Công thức 4.2):**
-  $$\text{Fallback Recall} = \frac{\text{Số câu hỏi ngoài corpus được phát hiện thành công}}{\text{Tổng số câu hỏi ngoài corpus trong test set}}$$
-- **False Fallback Rate (Công thức 4.3):**
-  $$\text{False Fallback Rate} = \frac{\text{Số câu hỏi trong corpus bị gọi nhầm ra Web}}{\text{Tổng số câu hỏi có sẵn trong corpus}}$$
-
-### 10.3. Kết quả Thực nghiệm Thực tế trên Held-Out Test Set (40 câu)
-- **Fallback Precision:** **1.0000 (100%)**
-- **Fallback Recall:** **1.0000 (100%)**
-- **False Fallback Rate:** **0.0000 (0%)**
-- **Citation Accuracy:** **1.0000 (100%)**
-- **Citation Coverage:** **1.0000 (100%)**
-- **Legal Temporal Correctness:** **1.0000 (100%)**
+Chỉ `Evidence` được dùng làm grounding pháp lý.
 
 ---
 
-## 11. Kiến trúc Giao diện Người dùng Next.js 14 (Frontend Architecture)
+# 6. AgentState
 
-Được xây dựng trong thư mục `frontend/` bằng **Next.js 14 (App Router) + TypeScript + Tailwind CSS**:
+`agent/state.py` định nghĩa shared state của **một turn**.
 
-### 11.1. Cấu trúc Component
-- `Navbar.tsx`: Hiển thị trạng thái kết nối backend, badge kiến trúc LangGraph, bộ chọn ngày tham chiếu `as_of_date`, và nút bật/tắt Bảng Vết Thực Thi.
-- `Sidebar.tsx`: Quản lý phiên hội thoại mới, thẻ hiển thị bối cảnh Semantic Memory doanh nghiệp (có nút xóa bộ nhớ), và danh mục văn bản pháp luật nội bộ.
-- `ChatStream.tsx`: Render luồng tin nhắn, hỗ trợ Markdown chuyên nghiệp và làm nổi bật các căn cứ pháp luật dưới dạng thẻ trích dẫn tím (`[DOC_41_2024_QH15_D2]`).
-- `ChatInput.tsx`: Khung nhập câu hỏi thông minh, phím tắt Enter (gửi) và Shift+Enter (xuống dòng).
-- `TraceDrawer.tsx`: Bảng Vết Thực Thi theo phong cách **DeepSeek Harness** và **Hermes Agent**, hiển thị trực quan:
-  - Route (`DATABASE` / `RAG`)
-  - Huy hiệu hành động CRAG (🟢 `CORRECT`, 🟡 `AMBIGUOUS`, 🔴 `INCORRECT`)
-  - Báo cáo kiểm định trích dẫn (`Hợp lệ 100%`)
-  - Danh sách thẻ bằng chứng (*Evidence Strips*) kèm thanh đo điểm số relevance.
+Các nhóm field chính:
 
-### 11.2. Phương thức Build & Triển khai
-- **Static Export:** Cấu hình `output: 'export'` trong `next.config.mjs` xuất toàn bộ ứng dụng ra `frontend/out/`.
-- **FastAPI Mount:** Server FastAPI tự động host `frontend/out/` tại `http://localhost:8000/`, cung cấp trải nghiệm Full-stack trọn gói chỉ với 1 lệnh khởi động duy nhất.
+```text
+Request & Context
+├── client_id
+├── session_id
+├── query
+├── as_of_date
+├── memory_context
+└── conversation_history
+
+ReAct Trajectory
+├── messages
+├── evidence
+└── tool_trace
+
+Output
+├── generation
+├── citation_report
+├── follow_up_questions
+└── trace_meta
+```
+
+### `messages`
+
+```python
+messages: Annotated[List[BaseMessage], add_messages]
+```
+
+Đây là trajectory nội bộ của ReAct loop trong turn hiện tại:
+
+```text
+SystemMessage
+HumanMessage
+AIMessage(tool_calls)
+ToolMessage
+AIMessage
+...
+```
+
+### `evidence`
+
+Evidence được append qua nhiều tool call trong cùng một turn.
+
+```python
+evidence: Annotated[List[Dict[str, Any]], operator.add]
+```
+
+### `tool_trace`
+
+Lưu trace tóm tắt mỗi tool call:
+
+```text
+tool
+args
+crag_action
+success
+evidence_count
+```
+
+`route` và `crag_action` trả ra API được **suy ra sau khi turn chạy xong** từ `tool_trace`; chúng không còn điều khiển graph.
+
+---
+
+# 7. LangGraph Execution Model
+
+Graph hiện tại có đúng ba node nghiệp vụ:
+
+```text
+START
+  ↓
+agent
+  │
+  ├── tool_calls ─────→ tools
+  │                      │
+  │                      └────→ agent
+  │
+  ├── cần thêm lượt agent ───→ agent
+  │
+  └── final answer ─────→ cite_validate
+                           │
+                           ▼
+                          END
+```
+
+Định nghĩa khái quát:
+
+```text
+START -> agent
+agent -> tools | agent | cite_validate
+tools -> agent
+cite_validate -> END
+```
+
+### Không có Router
+
+Không tồn tại graph-level routing:
+
+```text
+database
+rag
+general
+```
+
+Agent tự quyết định hành động bằng tool calling.
+
+### Không dùng Checkpointer cho multi-turn
+
+Graph được compile không kèm `MemorySaver` hoặc `SqliteSaver`.
+
+Persistence giữa các turn do:
+
+```text
+SQLite + Context Manager
+```
+
+đảm nhiệm.
+
+LangGraph chỉ giữ state trong lifecycle của turn đang chạy.
+
+---
+
+# 8. Agent Node và ReAct Loop
+
+`agent/nodes.py::agent_node()` thực hiện một lượt model call.
+
+Flow:
+
+```text
+build messages
+     ↓
+get chat model
+     ↓
+count tool rounds
+     ↓
+bind tools nếu chưa đạt giới hạn
+     ↓
+LLM call
+     ↓
+tool_calls?
+ /         \
+yes         no
+ │           │
+tools       parse final answer
+```
+
+## 8.1. Tool round limit
+
+Hệ thống có:
+
+```python
+MAX_TOOL_ROUNDS = 3
+```
+
+Khi đạt giới hạn, tool schema không còn được cung cấp cho model. Model phải tổng hợp câu trả lời từ evidence hiện có hoặc abstain.
+
+Ngoài ra có giới hạn riêng cho corrective nudge khi CRAG báo evidence chưa đủ.
+
+Mục tiêu của hai giới hạn:
+
+- tránh loop vô hạn;
+- tránh cùng một query bị gọi tool liên tục;
+- ép Agent kết thúc turn một cách xác định.
+
+## 8.2. Duplicate tool-call protection
+
+`tool_node()` kiểm tra `(tool_name, args)` đã được thực thi thành công trong turn chưa.
+
+Nếu trùng:
+
+```text
+Không execute lại
+↓
+trả ToolMessage nhắc model dùng evidence cũ
+```
+
+Điều này đặc biệt quan trọng với Web Search vì tránh network call lặp.
+
+## 8.3. Tool-call recovery
+
+Nếu provider không trả structured `tool_calls` đúng chuẩn nhưng leak function markup vào text, Agent có logic phục hồi tool call trước khi tiếp tục.
+
+Đây là lớp compatibility cho các model/tool-call implementation không hoàn toàn đồng nhất.
+
+---
+
+# 9. Tool System
+
+Agent chỉ nhìn thấy hai capability:
+
+```text
+Tool Registry
+├── crag_search
+└── controlled_web_search
+```
+
+Không expose trực tiếp:
+
+```text
+SQLite query
+Chroma search
+BM25 search
+RRF
+Reranker
+Embedding
+```
+
+Các thành phần trên là implementation detail.
+
+---
+
+## 9.1. BaseLegalTool
+
+Mọi tool kế thừa `BaseLegalTool`.
+
+Tool contract:
+
+```text
+Input
+  ↓
+Pydantic args_schema validation
+  ↓
+execute()
+  ↓
+ToolResult
+```
+
+`ToolResult`:
+
+```python
+{
+    "tool_name": str,
+    "success": bool,
+    "data": Any,
+    "error": str | None,
+    "execution_time_ms": float,
+    "metadata": dict
+}
+```
+
+Tool không được ném lỗi trực tiếp lên Agent cho các lỗi runtime thông thường; `BaseLegalTool.run()` đóng gói lỗi vào `ToolResult`.
+
+---
+
+## 9.2. Tool Registry
+
+`tools/registry.py` chịu trách nhiệm:
+
+```text
+register tool
+get tool
+list tools
+execute tool
+export OpenAI-compatible schemas
+```
+
+Agent không import từng tool cụ thể vào prompt.
+
+Agent nhận schema từ:
+
+```python
+registry.to_openai_tools()
+```
+
+---
+
+# 10. `crag_search`
+
+`crag_search` là capability truy vấn kho tri thức pháp lý nội bộ.
+
+Pipeline chuẩn:
+
+```text
+Query
+  │
+  ├──────────────┐
+  ▼              ▼
+Dense          BM25
+Chroma         Lexical
+  │              │
+  └──────┬───────┘
+         ▼
+        RRF
+         ↓
+      Rerank
+         ↓
+   CRAG Decision
+         ↓
+  Refine Internal
+         ↓
+      Evidence
+```
+
+Output mức tool:
+
+```json
+{
+  "crag_action": "CORRECT | AMBIGUOUS | INCORRECT",
+  "guidance": "...",
+  "evidence": [],
+  "dense_candidates": 0,
+  "bm25_candidates": 0
+}
+```
+
+Tool **không sinh final answer**.
+
+---
+
+## 10.1. Dense Retrieval
+
+`retrieval/dense.py` sử dụng Chroma.
+
+```text
+query
+ ↓
+embedding function
+ ↓
+Chroma similarity search
+ ↓
+top-k semantic candidates
+```
+
+Candidate chứa các metadata quan trọng:
+
+```text
+evidence_id
+document_id
+document_number
+document_title
+chapter
+article
+clause
+heading
+text
+score
+```
+
+---
+
+## 10.2. BM25 Retrieval
+
+`retrieval/bm25.py` sử dụng `rank-bm25`.
+
+BM25 phù hợp với các pattern exact lexical như:
+
+```text
+Điều 25
+Khoản 2
+41/2024/QH15
+giấy phép lao động
+```
+
+BM25 index được load từ file:
+
+```text
+~/.crag/data/processed/bm25_index.pkl
+```
+
+theo cấu hình mặc định tương ứng với `PROCESSED_DATA_DIR`.
+
+Index được cache trong process và invalidated khi rebuild.
+
+---
+
+## 10.3. Reciprocal Rank Fusion
+
+`retrieval/fusion.py` hợp nhất Dense và BM25 theo RRF.
+
+Công thức:
+
+```text
+RRF(d) = Σ 1 / (k + rank(d))
+```
+
+`k` lấy từ cấu hình `RRF_K`.
+
+RRF dùng ranking position thay vì cố gắng so sánh trực tiếp cosine score với BM25 score.
+
+---
+
+## 10.4. Reranker
+
+`retrieval/reranker.py` rerank candidate theo cặp:
+
+```text
+(query, chunk)
+```
+
+Ưu tiên:
+
+1. FlagEmbedding reranker nếu khả dụng.
+2. `sentence-transformers` CrossEncoder.
+3. Token-overlap heuristic fallback nếu model reranker không load được.
+
+Điểm cuối được normalize về khoảng:
+
+```text
+0.0 → 1.0
+```
+
+---
+
+## 10.5. CRAG Decision
+
+Evaluator dùng best reranker score và hai threshold:
+
+```text
+score >= T_HIGH
+    → CORRECT
+
+score <= T_LOW
+    → INCORRECT
+
+T_LOW < score < T_HIGH
+    → AMBIGUOUS
+```
+
+Threshold lấy từ config/.env, không hardcode trong Agent graph.
+
+Ý nghĩa:
+
+| Action | Ý nghĩa |
+|---|---|
+| `CORRECT` | Evidence nội bộ đủ mạnh |
+| `AMBIGUOUS` | Có liên quan nhưng chưa chắc đủ |
+| `INCORRECT` | Corpus nội bộ không đủ căn cứ |
+
+CRAG trả thêm `guidance` để model quyết định bước tiếp theo.
+
+---
+
+## 10.6. Exact Article Fast Path
+
+Nếu query có locator rõ:
+
+```text
+Điều 7
+Điều 25
+...
+```
+
+`crag_search` có fast-path truy vấn các chunk tương ứng trong SQLite để ưu tiên đúng điều được người dùng nhắc tới.
+
+Đây vẫn nằm **bên trong CRAG Tool**, không phải Database Tool độc lập.
+
+---
+
+## 10.7. Knowledge Refinement
+
+`retrieval/refine.py` chia candidate thành các legal strip nhỏ hơn và rerank lại.
+
+Flow:
+
+```text
+candidate chunk
+    ↓
+split_into_legal_strips()
+    ↓
+rerank strips
+    ↓
+filter by INTERNAL_STRIP_MIN
+    ↓
+evidence
+```
+
+Mục tiêu là đưa cho Agent đoạn căn cứ ngắn, cụ thể hơn thay vì toàn bộ chunk dài.
+
+---
+
+# 11. `controlled_web_search`
+
+Tool này chỉ dùng cho evidence ngoài corpus.
+
+Flow:
+
+```text
+Agent-generated search query
+        ↓
+TinyFish Search API
+        ↓
+official-domain filtering
+        ↓
+fetch page
+        ↓
+clean HTML
+        ↓
+refine_external()
+        ↓
+Web Evidence
+```
+
+Nguồn được giới hạn bởi allow-list `OFFICIAL_DOMAINS`.
+
+Ví dụ domain:
+
+```text
+vbpl.vn
+chinhphu.vn
+moj.gov.vn
+...
+```
+
+Web Search không tự động chạy chỉ vì CRAG trả `INCORRECT`.
+
+CRAG đưa `guidance`; **Agent Core vẫn là thành phần quyết định có gọi `controlled_web_search` hay không**.
+
+Đây là điểm giữ đúng semantics của Agentic CRAG:
+
+```text
+CRAG evaluates
+Agent decides
+Tool executes
+```
+
+---
+
+# 12. Evidence Contract
+
+Tool result được chuyển thành `ToolMessage`.
+
+Agent không nhận toàn bộ object nội bộ; các trường evidence chính được đưa vào conversation:
+
+```json
+{
+  "source_id": "...",
+  "heading": "...",
+  "text": "..."
+}
+```
+
+Trong `AgentState`, evidence đầy đủ vẫn được tích lũy để:
+
+- Citation Validator kiểm tra;
+- API trả evidence card;
+- logging/trace;
+- persistence vào `messages.evidence_json`.
+
+Một evidence identifier có thể đến từ:
+
+```text
+strip_id
+locator
+evidence_id
+```
+
+Các ID phải ổn định trong một corpus version để citation có thể truy ngược.
+
+---
+
+# 13. Citation Validation
+
+`legal/citations.py` là deterministic validator chạy sau khi Agent đã sinh answer.
+
+```text
+Generation
+   ↓
+build evidence_map
+   ↓
+validate source_id
+   ↓
+validate temporal effectiveness
+   ↓
+Citation Report
+```
+
+Validator kiểm tra:
+
+1. `source_id` có tồn tại trong evidence không.
+2. Citation có match được locator/parent locator không.
+3. Nếu có `as_of_date`, evidence có hiệu lực tại ngày đó không.
+4. Claim nào có citation hợp lệ.
+5. Citation accuracy và coverage.
+
+Report:
+
+```text
+ok
+errors
+valid_citations
+total_citations
+total_claims
+claims_with_valid_citation
+citation_accuracy
+citation_coverage
+```
+
+Nếu answer không `abstain` nhưng không có claim có căn cứ, validator đánh dấu lỗi.
+
+---
+
+# 14. History, Session và Memory
+
+Ba khái niệm phải giữ riêng biệt.
+
+## 14.1. Session
+
+Bảng:
+
+```text
+sessions
+```
+
+Mỗi session thuộc một `client_id`.
+
+Session được create/touch ở đầu turn.
+
+---
+
+## 14.2. History
+
+Canonical short-term history nằm trong:
+
+```text
+messages
+```
+
+Mỗi user/assistant response là một row.
+
+Context Manager đọc recent messages để tạo:
+
+```text
+conversation_history
+```
+
+Không dùng `query_logs` làm history canonical.
+
+---
+
+## 14.3. Semantic Memory
+
+Long-term profile nằm trong:
+
+```text
+memories
+```
+
+Memory bị giới hạn bởi:
+
+```text
+ALLOWED_MEMORY_KEYS
+```
+
+Ví dụ:
+
+```text
+business_type
+industry
+province
+```
+
+Memory dùng để hiểu context kiểu:
+
+```text
+"công ty tôi"
+"doanh nghiệp của tôi"
+```
+
+Memory **không được dùng làm legal evidence**.
+
+---
+
+# 15. SQLite Schema
+
+SQLite chia thành hai domain.
+
+## Corpus / Admin
+
+```text
+documents
+document_chunks
+ingestion_jobs
+legal_relations
+```
+
+## Conversation / Chat
+
+```text
+clients
+sessions
+messages
+memories
+```
+
+Quan hệ chính:
+
+```text
+clients
+   └── sessions
+          └── messages
+
+clients
+   └── memories
+
+documents
+   ├── document_chunks
+   ├── ingestion_jobs
+   └── legal_relations
+```
+
+SQLite chạy với:
+
+```text
+foreign_keys = ON
+journal_mode = WAL
+busy_timeout
+```
+
+để phù hợp với concurrent API read/write và ingestion worker.
+
+---
+
+# 16. Source of Truth và Retrieval Indexes
+
+Nguyên tắc quan trọng:
+
+```text
+SQLite = source of truth
+Chroma = dense retrieval index
+BM25   = lexical retrieval index
+```
+
+## SQLite
+
+Lưu canonical chunk:
+
+```text
+document_chunks.id
+document_id
+chapter
+article
+clause
+point
+heading
+content
+page_start
+page_end
+```
+
+## Chroma
+
+Lưu:
+
+```text
+id = document_chunks.id
+text
+embedding vector
+metadata
+```
+
+`ingestion/indexer.py` dùng `document_chunks.id` làm vector ID.
+
+## BM25
+
+Được rebuild từ toàn bộ chunk thuộc document có:
+
+```text
+status = READY
+```
+
+Do Chroma và BM25 là indexes, cả hai có thể rebuild từ SQLite mà không cần parse lại file gốc nếu chunk canonical còn nguyên.
+
+---
+
+# 17. Ingestion Architecture
+
+Admin upload không chạy toàn pipeline trong HTTP request.
+
+```text
+POST upload
+   ↓
+save file
+   ↓
+create documents row
+   ↓
+create ingestion_jobs row
+   ↓
+submit background worker
+   ↓
+return HTTP response
+```
+
+Worker chạy pipeline sau đó.
+
+---
+
+## 17.1. Background Worker
+
+`ingestion/worker.py` dùng:
+
+```python
+ThreadPoolExecutor
+```
+
+Số worker:
+
+```text
+INGESTION_WORKERS
+```
+
+Mặc định hiện tại:
+
+```text
+3
+```
+
+### Single upload
+
+```text
+submit_ingestion(document_id)
+```
+
+### Batch upload
+
+```text
+submit_batch_ingestion(document_ids)
+```
+
+Với batch, từng document được xử lý song song nhưng BM25 chỉ rebuild một lần khi toàn batch hoàn tất.
+
+---
+
+# 18. Ingestion Pipeline
+
+`ingestion/pipeline.py` chạy các stage:
+
+```text
+PARSING
+  ↓
+OCR (nếu cần)
+  ↓
+CLEANING
+  ↓
+STRUCTURING
+  ↓
+CHUNKING
+  ↓
+EMBEDDING
+  ↓
+INDEXING
+  ↓
+DONE
+```
+
+Document lifecycle:
+
+```text
+UPLOADED
+   ↓
+PROCESSING
+   ↓
+READY
+```
+
+Nếu lỗi:
+
+```text
+FAILED
+```
+
+---
+
+## 18.1. Parsing và OCR
+
+PDF được kiểm tra từng page.
+
+Nếu page không có usable digital text:
+
+```text
+OCR required
+```
+
+`UniversalLegalPreprocessor` xử lý text extraction/OCR.
+
+Progress được ghi vào job:
+
+```text
+OCR trang 12/45
+```
+
+---
+
+## 18.2. Cleaning
+
+`legal/cleaner.py` làm sạch format noise trước khi parse cấu trúc.
+
+Loại các thành phần như:
+
+```text
+dot leaders
+table-of-contents noise
+standalone page numbers
+Unicode invisible chars
+whitespace dư
+footer/header noise phù hợp rule
+```
+
+Không được phá các locator pháp lý:
+
+```text
+Điều 7.
+1.
+a)
+219/2025/NĐ-CP
+```
+
+---
+
+## 18.3. Structuring
+
+`legal/parser.py` nhận diện:
+
+```text
+Chương
+Mục
+Điều
+Khoản
+Điểm
+```
+
+và gắn page range.
+
+---
+
+## 18.4. Chunking
+
+Provisions được ghi vào:
+
+```text
+document_chunks
+```
+
+Một chunk có canonical ID và legal metadata.
+
+Đây là đơn vị sau đó được:
+
+```text
+embed
+index
+retrieve
+cite
+```
+
+---
+
+## 18.5. Embedding + Chroma
+
+`index_document_chunks()`:
+
+1. Xóa vector cũ của document.
+2. Lấy chunk canonical từ SQLite.
+3. Chỉ lấy document đang ở trạng thái `READY`.
+4. Embed theo batch.
+5. Ghi text + vector + metadata vào Chroma.
+
+Batch size hiện tại:
+
+```text
+64 chunks
+```
+
+Progress:
+
+```text
+Đang nhúng đoạn N/M
+```
+
+---
+
+## 18.6. BM25 Rebuild
+
+BM25 được rebuild từ:
+
+```text
+all READY document chunks
+```
+
+Sau rebuild, in-process BM25 cache bị invalidated để request tiếp theo load index mới.
+
+---
+
+## 18.7. Failure Cleanup
+
+Nếu pipeline lỗi:
+
+```text
+exception
+  ↓
+remove partial Chroma vectors
+  ↓
+rebuild BM25 khi cần
+  ↓
+documents.status = FAILED
+  ↓
+store error_message
+```
+
+Nguyên tắc:
+
+> Document FAILED không được để lại partial retrieval state làm Agent retrieve nhầm.
+
+---
+
+# 19. Provider Layer
+
+Chat LLM và Embedding Provider là hai abstraction riêng.
+
+```text
+Provider Layer
+├── Chat LLM
+│   ├── Groq
+│   ├── OpenAI
+│   ├── OpenRouter
+│   └── Ollama
+│
+└── Embedding
+    ├── Hugging Face / sentence-transformers
+    ├── OpenAI
+    └── Ollama
+```
+
+---
+
+## 19.1. Chat Model Factory
+
+`llm.py::get_chat_model()` tạo LangChain `BaseChatModel`.
+
+`get_chat_model_with_fallback()`:
+
+```text
+primary provider
+      ↓
+success?
+ /        \
+yes        no
+ │          ↓
+return   fallback providers
+```
+
+Nếu tất cả provider fail, Agent dùng deterministic evidence fallback thay vì crash toàn turn.
+
+---
+
+## 19.2. Embedding Factory
+
+`get_embeddings()` cache embedding instance theo:
+
+```text
+(provider, model)
+```
+
+Embedding model không phụ thuộc Chat LLM.
+
+Ví dụ hợp lệ:
+
+```text
+Chat LLM     = Groq
+Embedding    = Hugging Face BGE-M3
+Reranker     = BGE Reranker
+```
+
+hoặc:
+
+```text
+Chat LLM     = Ollama
+Embedding    = Ollama
+```
+
+---
+
+# 20. API Contracts
+
+FastAPI entry:
+
+```text
+api/main.py
+```
+
+## Chat
+
+| Method | Endpoint | Vai trò |
+|---|---|---|
+| `GET` | `/api/health` | Health check |
+| `POST` | `/api/chat` | Non-streaming Agent turn |
+| `POST` | `/api/chat/stream` | SSE streaming Agent turn |
+| `GET` | `/api/history/{client_id}` | Conversation history |
+| `DELETE` | `/api/history/{client_id}/{session_id}` | Xóa một session |
+| `DELETE` | `/api/history/{client_id}` | Xóa history của client |
+| `GET` | `/api/memory/{client_id}` | Semantic memory |
+| `DELETE` | `/api/memory/{client_id}` | Xóa semantic memory |
+| `GET` | `/api/documents` | READY documents |
+
+## Admin
+
+| Method | Endpoint | Vai trò |
+|---|---|---|
+| `GET` | `/api/admin/documents` | Danh sách toàn bộ document |
+| `GET` | `/api/admin/documents/{id}` | Metadata + ingestion job |
+| `GET` | `/api/admin/documents/{id}/chunks` | Chunk preview |
+| `GET` | `/api/admin/stats` | Corpus statistics |
+| `POST` | `/api/admin/documents/upload` | Upload một file |
+| `POST` | `/api/admin/documents/upload-batch` | Upload batch |
+| `DELETE` | `/api/admin/documents/{id}` | Xóa document khỏi SQLite/Chroma/BM25 |
+
+Admin API không expose vector raw cho UI.
+
+---
+
+# 21. Streaming
+
+`POST /api/chat/stream` sử dụng Server-Sent Events.
+
+Các loại event chính:
+
+```text
+node
+tool_start
+tool_end
+token
+done
+error
+```
+
+Frontend có thể hiển thị:
+
+```text
+Agent đang suy luận
+CRAG đang retrieve
+Web Search đang chạy
+Citation Validator đang kiểm tra
+```
+
+mà không cần biết chi tiết implementation bên trong từng tool.
+
+---
+
+# 22. Observability
+
+Có hai lớp observability.
+
+## 22.1. Application Logs
+
+`logging_config.py` cung cấp:
+
+```text
+get_logger()
+timed_stage()
+```
+
+Ví dụ stage:
+
+```text
+AGENT:LLM_CALL
+AGENT:TOOL_CALL
+RETRIEVE:DENSE
+RETRIEVE:BM25
+RETRIEVE:RRF
+RETRIEVE:RERANK
+INGEST:OCR
+INGEST:CHUNKING
+INGEST:EMBEDDING
+```
+
+`timed_stage()` log:
+
+```text
+start
+done + elapsed time
+FAILED + elapsed time
+```
+
+## 22.2. LangFuse
+
+`monitoring.py` bật LangFuse khi có:
+
+```text
+LANGFUSE_PUBLIC_KEY
+LANGFUSE_SECRET_KEY
+```
+
+Nếu không cấu hình, tracing tự disable và ứng dụng vẫn chạy.
+
+LangFuse metadata gồm:
+
+```text
+thread/session id
+client id
+trace name
+```
+
+---
+
+# 23. Frontend Architecture
+
+Frontend:
+
+```text
+Next.js 14
+React 18
+TypeScript
+Tailwind CSS
+```
+
+Có hai chức năng chính:
+
+```text
+Chat Page
+Admin Page
+```
+
+## Chat Page
+
+Giao tiếp với:
+
+```text
+/api/chat
+/api/chat/stream
+/api/history
+/api/memory
+```
+
+## Admin Page
+
+Giao tiếp với:
+
+```text
+/api/admin/documents
+/api/admin/documents/{id}
+/api/admin/documents/{id}/chunks
+/api/admin/stats
+/api/admin/documents/upload
+```
+
+Admin chỉ hiển thị:
+
+```text
+document
+status
+progress
+error
+chunk preview
+```
+
+Không expose:
+
+```text
+embedding vector
+vector dimensions
+Chroma internals
+BM25 internals
+```
+
+---
+
+# 24. Error Handling
+
+Các lỗi được xử lý tại boundary phù hợp.
+
+### LLM unavailable
+
+```text
+Provider Manager
+   ↓
+try fallback providers
+   ↓
+all failed
+   ↓
+deterministic evidence fallback
+```
+
+### Tool error
+
+```text
+Tool exception
+   ↓
+BaseLegalTool.run()
+   ↓
+ToolResult(success=False)
+   ↓
+ToolMessage
+```
+
+### Retrieval model unavailable
+
+Embedding init failure được báo rõ; không sinh dummy embedding.
+
+Reranker có heuristic fallback nếu CrossEncoder không khả dụng.
+
+### Ingestion error
+
+```text
+FAILED
++ error_message
++ remove partial vectors
+```
+
+### Web Search unavailable
+
+Nếu `TINYFISH_API_KEY` không được cấu hình hoặc request fail, tool trả empty evidence thay vì làm crash API process.
+
+---
+
+# 25. Testing Strategy
+
+Test nên chia theo boundary.
+
+## Unit Tests
+
+```text
+legal.cleaner
+legal.parser
+retrieval.fusion
+retrieval.reranker
+legal.citations
+memory.store
+tool schemas
+```
+
+## Retrieval Tests
+
+Kiểm tra:
+
+```text
+Dense top-k
+BM25 exact locator
+RRF ordering
+Rerank
+CRAG action
+```
+
+## Agent Tests
+
+Kiểm tra:
+
+```text
+No Router
+tool selection
+tool loop bound
+duplicate tool call protection
+abstain
+citation validation
+```
+
+## Ingestion Tests
+
+Kiểm tra:
+
+```text
+upload
+duplicate hash
+parse
+OCR routing
+cleaning
+chunk creation
+Chroma indexing
+BM25 rebuild
+FAILED cleanup
+```
+
+## API Tests
+
+Kiểm tra:
+
+```text
+/api/chat
+/api/chat/stream
+history isolation
+memory isolation
+admin upload
+admin chunk preview
+```
+
+## Evaluation
+
+`eval/` dùng để đánh giá các chỉ số retrieval và grounding.
+
+Kết quả benchmark không nên hardcode vào tài liệu kỹ thuật vì thay đổi theo:
+
+```text
+corpus
+model
+threshold
+embedding
+reranker
+provider
+```
+
+---
+
+# 26. Technical Invariants
+
+Các rule dưới đây là ranh giới developer không nên phá.
+
+### 1. Không thêm Router trước Agent Core
+
+Sai:
+
+```text
+User
+ ↓
+Router
+ ├── DB
+ ├── RAG
+ └── General
+```
+
+Đúng:
+
+```text
+User
+ ↓
+Agent
+ ↓
+Agent tự chọn tool
+```
+
+### 2. Chỉ expose capability-level tools
+
+Agent-visible:
+
+```text
+crag_search
+controlled_web_search
+```
+
+Không expose storage primitive:
+
+```text
+sqlite_query
+chroma_search
+bm25_search
+```
+
+### 3. CRAG không sinh final answer
+
+```text
+CRAG
+→ evidence
+→ Agent
+→ answer
+```
+
+### 4. Memory không phải legal evidence
+
+```text
+Memory → context only
+Evidence → legal grounding
+```
+
+### 5. SQLite là canonical source
+
+```text
+SQLite
+ ↓
+rebuild
+ ├── Chroma
+ └── BM25
+```
+
+### 6. Chỉ READY document được retrieve
+
+Document `PROCESSING` hoặc `FAILED` không được xuất hiện trong Knowledge Base phục vụ Chat.
+
+### 7. Citation phải map về evidence thật
+
+Không chấp nhận model tự tạo `source_id`.
+
+### 8. Multi-turn persistence thuộc SQLite
+
+Không dùng LangGraph in-memory checkpointer như source of truth cho conversation history.
+
+### 9. Chat provider và embedding provider độc lập
+
+Thay LLM không được bắt buộc rebuild vector nếu embedding model không đổi.
+
+### 10. Admin không phụ thuộc Agent Core
+
+Ingestion là deterministic pipeline riêng, không chạy qua ReAct graph.
+
+---
+
+# 27. Dependency Direction
+
+Dependency mong muốn:
+
+```text
+api
+ ↓
+agent runtime
+ ↓
+agent core
+ ↓
+tools
+ ↓
+retrieval
+ ↓
+storage/index
+```
+
+Admin:
+
+```text
+api
+ ↓
+ingestion
+ ↓
+legal parser/cleaner
+ ↓
+storage/index
+```
+
+Không nên để:
+
+```text
+retrieval -> api
+storage -> agent
+ingestion -> frontend
+```
+
+Module tầng thấp không được phụ thuộc ngược vào tầng giao diện.
+
+---
+
+# 28. Tóm tắt kiến trúc kỹ thuật
+
+```text
+                         CHAT
+                          │
+                    Agent Runtime
+                          │
+                   Context Manager
+                          │
+                      Agent Core
+                          │
+                     ReAct Loop
+                   ┌──────┴──────┐
+                   ▼             ▼
+              crag_search     web_search
+                   │
+          ┌────────┴────────┐
+          ▼                 ▼
+       Chroma              BM25
+          └────────┬────────┘
+                   ▼
+                  RRF
+                   ↓
+                Rerank
+                   ↓
+             CRAG Evaluate
+                   ↓
+                Evidence
+                   │
+                   └──────→ Agent
+                              ↓
+                       Citation Validator
+                              ↓
+                           Response
+
+
+                         ADMIN
+                           │
+                         Upload
+                           ↓
+                    Background Worker
+                           ↓
+                      Parse / OCR
+                           ↓
+                        Cleaning
+                           ↓
+                       Structuring
+                           ↓
+                        Chunking
+                           ↓
+                       Embedding
+                           ↓
+                   Chroma + BM25
+                           ↓
+                         READY
+
+
+                    SHARED DATA
+              ┌────────┬────────┬────────┐
+              ▼        ▼        ▼
+            SQLite   Chroma    BM25
+```
+
+---
+
+# 29. Tài liệu liên quan
+
+- [INSTALL.md](INSTALL.md) — cài Git, uv, Python 3.13, NVM, Node.js, pnpm, Ollama.
+- [SETUP_AND_RUN.md](SETUP_AND_RUN.md) — cấu hình `.env` và chạy project.
+- [WORKFLOW.md](WORKFLOW.md) — workflow Chat + Admin ở mức hệ thống.
+- [KNOWLEDGE_BASE.md](KNOWLEDGE_BASE.md) — chi tiết document → chunk → vector → retrieval.
+
+```text
+INSTALL.md
+    ↓
+SETUP_AND_RUN.md
+    ↓
+┌───────────────┬───────────────────┐
+▼               ▼                   ▼
+TECHNICAL.md   WORKFLOW.md     KNOWLEDGE_BASE.md
+```

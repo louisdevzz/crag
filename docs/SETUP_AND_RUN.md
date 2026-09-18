@@ -1,309 +1,537 @@
-# Hướng dẫn Kỹ thuật: Cài đặt và Vận hành Hệ thống Legal CRAG Assistant
+# Setup & Run — Legal CRAG Assistant
 
-> **Tài liệu hướng dẫn triển khai toàn diện dự án Trợ lý Tuân thủ & Pháp lý Doanh nghiệp (Legal & Compliance AI Assistant) với Corrective RAG (CRAG) và Session Memory.**
+> Tài liệu này hướng dẫn **cấu hình và chạy dự án sau khi đã cài các công cụ hệ thống**.  
+> Nếu máy chưa có Git, `uv`, Python 3.13, NVM, Node.js, pnpm hoặc Ollama, xem [INSTALL.md](INSTALL.md) trước.
 
----
+## 1. Chuẩn bị repository
 
-## MỤC LỤC
+Nếu chưa clone:
 
-1. [Yêu cầu Hệ thống & Tiên quyết](#1-yêu-cầu-hệ-thống--tiên-quyết)
-2. [Cài đặt Môi trường & Gói Thư viện](#2-cài-đặt-môi-trường--gói-thư-viện)
-3. [Cấu hình Trung tâm & Biến Môi trường](#3-cấu-hình-trung-tâm--biến-môi-trường)
-4. [Bộ Tiền xử lý Dữ liệu Vạn năng (Universal Legal Preprocessor)](#4-bộ-tiền-xử-lý-dữ-liệu-vạn-năng-universal-legal-preprocessor)
-5. [Pipeline Nạp Dữ liệu (Ingestion Pipeline)](#5-pipeline-nạp-dữ-liệu-ingestion-pipeline)
-6. [Chạy 5 Kịch bản Demo Kiểm chuẩn Bắt buộc](#6-chạy-5-kịch-bản-demo-kiểm-chuẩn-bắt-buộc)
-7. [Chạy Giao diện Dòng lệnh Tương tác (CLI Mode)](#7-chạy-giao-diện-dòng-lệnh-tương-tác-cli-mode)
-8. [Chạy Bộ Đánh giá Benchmark & Quét lưới Ngưỡng](#8-chạy-bộ-đánh-giá-benchmark--quét-lưới-ngưỡng)
-9. [Khởi chạy FastAPI RESTful Gateway (Layer 1 Backend)](#9-khởi-chạy-fastapi-restful-gateway-layer-1-backend)
-10. [Nguyên tắc An toàn Memory & Xử lý Sự cố](#10-nguyên-tắc-an-toàn-memory--xử-lý-sự-cố)
-
----
-
-## 1. Yêu cầu Hệ thống & Tiên quyết
-
-- **Hệ điều hành:** Linux (Ubuntu 22.04 / 24.04 LTS, WSL2), macOS hoặc Windows 11.
-- **Python:** Python 3.11 hoặc 3.12 (khuyến nghị 3.12).
-- **Bộ quản lý gói:** Khuyến nghị dùng [`uv`](https://github.com/astral-sh/uv) (tốc độ cài đặt cực nhanh) hoặc `pip` tiêu chuẩn.
-- **Phần cứng:**
-  - Tối thiểu 8GB RAM (16GB RAM nếu chạy local LLM).
-  - Không bắt buộc GPU (hệ thống có cơ chế fallback CPU/offline hoàn toàn độc lập cho embedding và reranking). Nếu có GPU NVIDIA, hệ thống tự động tận dụng CUDA.
-
----
-
-## 2. Cài đặt Môi trường & Gói Thư viện
-
-### Bước 2.1: Kích hoạt Virtual Environment với `uv`
 ```bash
-# Di chuyển vào thư mục dự án
-cd /home/ubuntu/ai-agent-crag
-
-# Tạo môi trường ảo
-uv venv .venv
-
-# Kích hoạt môi trường ảo
-source .venv/bin/activate
+git clone https://github.com/louisdevzz/crag.git
+cd crag
 ```
 
-### Bước 2.2: Cài đặt Dependencies
+Nếu đã có repository:
+
 ```bash
-uv pip install -r pyproject.toml
+cd crag
+git pull
 ```
 
-Các thư viện chính bao gồm:
-- **Điều phối Agent:** `langgraph`, `langchain`, `langchain-core`
-- **Tầng LLM:** `langchain-openai`, `langchain-groq`, `langchain-ollama`
-- **Truy hồi & Vector:** `chromadb`, `langchain-chroma`, `rank-bm25`
-- **Xử lý File & PDF:** `pymupdf`, `pillow`, `beautifulsoup4`, `pydantic`
-- **API & Web:** `fastapi`, `uvicorn[standard]`, `requests` (TinyFish Search API cho `controlled_web_search`)
+Tất cả lệnh backend bên dưới được chạy từ thư mục gốc `crag/`.
 
----
+## 2. Cài dependencies backend
 
-## 3. Cấu hình Trung tâm & Biến Môi trường
+Dự án chuẩn hóa môi trường bằng **Python 3.13** và dùng `uv.lock` để đồng bộ dependency.
 
-Dự án áp dụng mô hình **Pluggable Provider Pattern**, cho phép linh hoạt chuyển đổi giữa các nhà cung cấp LLM mà không cần chỉnh sửa mã nguồn.
+```bash
+uv sync --python 3.13 --frozen
+```
 
-Sao chép file cấu hình mẫu:
+Kiểm tra:
+
+```bash
+uv run python --version
+```
+
+Kết quả mong đợi:
+
+```text
+Python 3.13.x
+```
+
+Không cần `source .venv/bin/activate` nếu dùng các lệnh `uv run ...`.
+
+## 3. Cài dependencies frontend
+
+```bash
+cd frontend
+pnpm install --frozen-lockfile
+cd ..
+```
+
+Kiểm tra:
+
+```bash
+node --version
+pnpm --version
+```
+
+Frontend hiện khai báo `pnpm 11.18.0`.
+
+## 4. Tạo file cấu hình
+
+Từ thư mục `crag/`:
+
 ```bash
 cp .env.example .env
 ```
 
-### Chi tiết các thiết lập trong `.env`:
+Sau đó chỉnh `.env` theo provider muốn sử dụng.
+
+### Groq
+
 ```ini
-# ==============================================================================
-# CHỌN NHÀ CUNG CẤP LLM: "groq" | "openai" | "openrouter" | "ollama"
-# ==============================================================================
 LLM_PROVIDER=groq
-
-# Model tương ứng (danh mục Groq Free Plan cập nhật 2026-09-11):
-# - Groq: "qwen/qwen3.8-27b" (khuyến nghị: reasoning, coding, học thuật, tool use, JSON mode),
-#   "openai/gpt-oss-120b" (heavy cloud: reasoning mạnh hơn + web/browser/code tools tích hợp),
-#   "qwen/qwen3.6-27b", "openai/gpt-oss-20b", "groq/compound" (agent: web search + code execution)
-# - OpenAI: "gpt-4o-mini", "gpt-4o"
-# - OpenRouter: "deepseek/deepseek-chat", "qwen/qwen-2.5-72b-instruct"
-# - Ollama: "qwen3.8:latest" (local fallback tương ứng qwen/qwen3.8-27b), "qwen2.5:14b-instruct"
 LLM_MODEL=qwen/qwen3.8-27b
-LLM_TEMPERATURE=0.0
+GROQ_API_KEY=your_key
+```
 
-# API Keys (điền key của bạn nếu sử dụng cloud provider)
-GROQ_API_KEY=gsk_your_groq_api_key_here
-OPENAI_API_KEY=sk-your_openai_key_here
-OPENROUTER_API_KEY=sk-or-your_openrouter_key_here
+### OpenAI
 
-# Provider Endpoints
-OLLAMA_BASE_URL=http://localhost:11434
+```ini
+LLM_PROVIDER=openai
+LLM_MODEL=<openai-model>
+OPENAI_API_KEY=your_key
+```
+
+### OpenRouter
+
+```ini
+LLM_PROVIDER=openrouter
+LLM_MODEL=<openrouter-model>
+OPENROUTER_API_KEY=your_key
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-
-# Ngưỡng quyết định 3 nhánh CRAG (đã tối ưu hóa qua Calibration)
-T_LOW=0.40
-T_HIGH=0.80
-INTERNAL_STRIP_MIN=0.40
 ```
 
-> **Lưu ý Chế độ Offline/Zero-Key:**  
-> Nếu bạn chưa có API Key, hệ thống **vẫn hoạt động hoàn hảo**. Khi không có API Key, LLM Factory sẽ tự động chuyển sang cơ chế tổng hợp câu trả lời xác định (*Deterministic Offline Synthesis*) trích xuất trực tiếp từ các strip có relevance cao nhất kèm theo citation hợp lệ!
+### Ollama local
 
----
-
-## 4. Bộ Tiền xử lý Dữ liệu Vạn năng (Universal Legal Preprocessor)
-
-Module `legal/preprocessor.py` chịu trách nhiệm chuẩn hóa mọi tài liệu pháp luật đầu vào vào thư mục `data/`:
-
-### Nguyên tắc hoạt động:
-1. **Phát hiện lớp văn bản số (Digital Text):**  
-   Với các file PDF có sẵn lớp text (như `data/Bảo hiểm xã hội/41-2024-qh15.pdf`), module trích xuất tự động qua PyMuPDF với tốc độ chỉ ~0.3 giây cho 88 trang.
-2. **Xử lý PDF Scan ảnh (Scanned Signed PDF):**  
-   Với các file scan ảnh (như `45.signed.pdf`, `59.signed.pdf`), module render các trang thành ảnh PNG lưu tại `data/processed/scanned_pages/`.  
-   Khi có API Key, module tự động gọi **Vision LLM** (`gpt-4o-mini`, `llama-3.2-11b-vision-preview`, hoặc `qwen2-vl`) với prompt chuyên dụng số hóa pháp luật, lưu cache tại `data/processed/ocr_cache/` để tái sử dụng vĩnh viễn.
-3. **Bóc tách cấu trúc thứ bậc (Legal-aware Chunking):**  
-   Tự động tách theo đúng thứ bậc: `Chương -> Điều -> Khoản -> Điểm`.  
-   Tạo sẵn các **Legal Strips** có gán nhãn `locator` xác định (ví dụ: `DOC_41_2024_QH15_D2_K1`).
-
----
-## 5. Khởi tạo Hệ thống & Cấu trúc Dữ liệu (~/.crag/)
-
-Hệ thống áp dụng chuẩn lưu trữ an toàn, tách biệt hoàn toàn database khỏi mã nguồn repo và quản lý tập trung tại `~/.crag/` (hoặc biến môi trường `$CRAG_HOME`):
+Đảm bảo Ollama đang chạy:
 
 ```bash
-python init_system.py
-# Hoặc tích hợp qua CLI:
-python main.py --init
+ollama list
 ```
 
-Lệnh trên thực hiện tự động:
-1. Thiết lập cây thư mục: `~/.crag/database/`, `~/.crag/chroma/`, `~/.crag/logs/`.
-2. Khởi tạo 8 bảng quan hệ và chỉ mục tại `~/.crag/app.db` kích hoạt chế độ WAL mode.
-3. Tự động kiểm tra tính hợp lệ của file `.env` và các API keys.
+Sau đó cấu hình:
 
----
-
-## 6. Pipeline Nạp Dữ liệu (Ingestion Pipeline)
-
-Nạp văn bản qua Admin UI (`/admin`, kéo-thả PDF/DOCX/TXT, hoặc chọn cả một thư mục) hoặc gọi thẳng API — cả hai đều kích hoạt cùng một pipeline chạy nền theo giai đoạn:
-
-```bash
-# Một file
-curl -X POST http://localhost:8000/api/admin/documents/upload -F "file=@data/mydoc.pdf"
-
-# Nhiều file / cả thư mục cùng lúc (field "files" lặp lại một lần mỗi file)
-curl -X POST http://localhost:8000/api/admin/documents/upload-batch \
-  -F "files=@data/doc1.pdf" -F "files=@data/doc2.pdf" -F "files=@data/doc3.docx"
+```ini
+LLM_PROVIDER=ollama
+LLM_MODEL=<model-name>
+OLLAMA_BASE_URL=http://localhost:11434
 ```
 
-Request trả về ngay `{document_id, status, job_id}` (single) hoặc `{total, accepted, results: [...]}` (batch, mỗi file `QUEUED`/`SKIPPED`/`ERROR`); theo dõi tiến trình qua `GET /api/admin/documents/{document_id}` (`job.stage` + `job.detail` + `job.processed_units`/`total_units`) hoặc trực tiếp trên Admin UI.
+`LLM_MODEL` phải trùng với tên hiển thị bởi `ollama list`.
 
-**Tốc độ nạp file nhiều trang:** OCR trang (Vision LLM) và số tài liệu ingest song song đều có thể cấu hình qua `.env` — xem `OCR_CONCURRENCY` (mặc định 4 trang OCR song song mỗi tài liệu) và `INGESTION_WORKERS` (mặc định 3 tài liệu song song). Một lô upload cũng chỉ rebuild BM25 đúng một lần sau khi toàn bộ lô hoàn tất, không rebuild lại toàn corpus cho từng file.
+## 5. Các cấu hình quan trọng khác
 
-### Các giai đoạn xử lý (mỗi giai đoạn cập nhật `ingestion_jobs.stage`/`progress`; bước con trong giai đoạn cập nhật thêm `detail`/`processed_units`/`total_units`):
-1. **PARSING** — Trích xuất text từ file (pymupdf/python-docx); phát hiện trang scan → chuyển giai đoạn **OCR** (Vision LLM, các trang OCR song song qua `OCR_CONCURRENCY`, `detail` hiển thị `"OCR trang N/M"`) trước khi tiếp tục.
-2. **CLEANING** — `legal/cleaner.py` loại dot-leader (`....`), dòng mục lục ("Điều 7 ..... 12"), số trang đứng riêng, khối ký tên "Nơi nhận", ký tự Unicode vô hình, khoảng trắng/dòng trống dư — giữ nguyên mọi mốc cấu trúc (`Điều 1.`, `1.`, `a)`, `219/2025/NĐ-CP`).
-3. **STRUCTURING** — `legal/parser.py` tách Chương → Điều → Khoản, gắn số trang cho từng provision.
-4. **CHUNKING** — Ghi từng provision thành một dòng `document_chunks` (đơn vị lập chỉ mục và duyệt trong Admin).
-5. **EMBEDDING** — Nhúng vector theo batch 64 chunk (`detail` hiển thị `"Đang nhúng đoạn N/M"`) rồi cập nhật Chroma.
-6. **INDEXING** — Rebuild BM25 (`data/processed/bm25_index.pkl`); ẩn hoàn toàn khỏi Admin UI.
+### OCR cho PDF scan
 
-Chỉ văn bản có `status = READY` mới được CRAG truy hồi tới. Mọi giai đoạn/bước con đều ghi log kèm thời gian thực thi ra console (`logging_config.timed_stage`) để chẩn đoán chính xác thời gian rơi vào đâu khi ingest chậm.
----
+```ini
+VISION_PROVIDER=groq
+VISION_MODEL=qwen/qwen3.8-27b
 
-## 7. Chạy 5 Kịch bản Demo Kiểm chuẩn Bắt buộc
-
-Để nghiệm thu đồ án theo đúng chuẩn mực của **Table 3.2** trong tài liệu hướng dẫn, chạy lệnh sau:
-
-```bash
-python main.py --demo
+INGESTION_WORKERS=3
+OCR_CONCURRENCY=4
 ```
 
-### Minh chứng hoạt động của 5 Kịch bản:
-- **Test 1 (Correct Case):** Câu hỏi có sẵn trong dữ liệu nội bộ  
-  $\to$ Evaluator chấm điểm $\ge T_{high}$  
-  $\to$ Action **`CORRECT`**  
-  $\to$ Tinh chế Legal Strips  
-  $\to$ Sinh câu trả lời kèm citation hợp lệ.
-- **Test 2 (Incorrect Case):** Câu hỏi ngoài phạm vi corpus (ví dụ: cấp phép bay drone)  
-  $\to$ Evaluator chấm điểm $\le T_{low}$  
-  $\to$ Action **`INCORRECT`**  
-  $\to$ Viết lại truy vấn  
-  $\to$ Kích hoạt Controlled Web Search trên các cổng thông tin nhà nước.
-- **Test 3 (Ambiguous Case):** Câu hỏi có căn cứ bộ phận nhưng thiếu chi tiết  
-  $\to$ Action **`AMBIGUOUS`**  
-  $\to$ Kết hợp tinh lọc nội bộ và tìm kiếm ngoài  
-  $\to$ Hợp nhất `merge_evidence` đa nguồn.
-- **Test 4 (Database Tool):** “Văn bản số 41/2024/QH15 còn hiệu lực không?”  
-  $\to$ Router chuyển sang nhánh **`database`**  
-  $\to$ Kiểm tra bảng `legal_documents`  
-  $\to$ Trả về ngày hiệu lực `2025-07-01` và trạng thái `Còn hiệu lực`.
-- **Test 5 (Citation Failure):** Mô phỏng câu trả lời có source_id bịa đặt (`DOC_FAKE_2099_D999`)  
-  $\to$ `validate_citations` phát hiện vi phạm, trả về `ok = False`, chặn câu trả lời ảo giác.
+Nếu dùng provider cloud cho OCR, cần API key tương ứng.
 
----
+### Web Search
 
-## 8. Chạy Giao diện Dòng lệnh Tương tác (CLI Mode)
-
-Khởi động phiên chat tương tác bằng lệnh:
-
-```bash
-python main.py
+```ini
+TINYFISH_API_KEY=your_tinyfish_api_key
 ```
 
-### Các tính năng trong CLI:
-- **Chat tự nhiên:** Nhập câu hỏi pháp lý bằng tiếng Việt.
-- **Theo dõi Execution Trace:** Hiển thị tức thời Route đã chọn (`database` hay `rag`), Action CRAG (`CORRECT`, `AMBIGUOUS`, `INCORRECT`) và số lượng bằng chứng đã bóc tách.
-- **Kiểm định Trích dẫn:** Hiển thị danh mục `[Căn cứ trích dẫn]` và cảnh báo nếu có vi phạm.
-- **Tự động nhận diện hồ sơ doanh nghiệp:** Ví dụ người dùng nói: *"Tôi phụ trách doanh nghiệp TNHH tại Long An..."* $\to$ Hệ thống tự trích xuất và ghi nhớ `business_type = Công ty TNHH`, `province = Long An`.
-- **Lệnh hỗ trợ:**
-  - `clear`: Xóa sạch Semantic Memory của phiên làm việc.
-  - `exit` hoặc `quit`: Thoát chương trình.
+`controlled_web_search` cần key này khi Agent quyết định tìm thêm nguồn pháp luật trên web.
 
----
+### Embedding và Reranker
 
-## 9. Chạy Bộ Đánh giá Benchmark & Quét lưới Ngưỡng
-
-Để đo lường định lượng và tái lập các bảng số liệu trong **Chương 4**, chạy script:
-
-```bash
-python eval/run_eval.py
+```ini
+EMBEDDING_MODEL=BAAI/bge-m3
+RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 ```
 
-### Quá trình thực thi:
-1. **Quét lưới hiệu chuẩn (Grid Search Calibration):**  
-   Chạy trên tập `eval/calibration_set.json` (20 câu) qua các cặp ngưỡng $(0.20, 0.60), (0.25, 0.65), ..., (0.40, 0.80)$ để tìm điểm cân bằng tối ưu giữa Action Macro-F1 và hạn chế False Fallback.
-2. **Đo kiểm trên Held-Out Test Set (40 câu):**  
-   Chạy độc lập trên tập `eval/test_set.json` gồm 5 nhóm câu hỏi:
-   - 12 câu Correct (In-corpus)
-   - 10 câu Incorrect (Out-of-corpus)
-   - 8 câu Ambiguous (Partial evidence)
-   - 5 câu Database metadata
-   - 5 câu Temporal / Xung đột thời gian
-3. **Xuất báo cáo:**  
-   Báo cáo tổng hợp tự động lưu tại `eval/benchmark_report.json`.
+Hai model này phục vụ retrieval nội bộ và độc lập với `LLM_PROVIDER`.
 
----
+### Storage
 
-## 10. Khởi chạy FastAPI Backend & Giao diện Next.js Web UI (Layer 1)
+Mặc định runtime data nằm dưới:
 
-Hệ thống cung cấp giao diện Web người dùng bằng **Next.js (TypeScript)** theo đúng đặc tả của đồ án:
-
-### Cách 1: Chạy Full Stack với FastAPI (Khuyến nghị)
-Sau khi Next.js được build tĩnh (`pnpm run build` xuất ra `frontend/out/`), FastAPI Gateway tự động host giao diện trực tiếp tại cổng 8000:
-```bash
-# Khởi chạy FastAPI server
-uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+```text
+~/.crag/
 ```
-- **Truy cập Web UI:** `http://localhost:8000/`
-- **Swagger API Documentation:** `http://localhost:8000/docs`
 
-### Cách 2: Chạy Next.js ở chế độ Development (Hot Reload)
-Nếu bạn muốn tùy biến giao diện với tính năng Hot Module Reload (HMR):
-```bash
-# Terminal 1: Chạy backend FastAPI
-uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+Có thể thay đổi bằng:
 
-# Terminal 2: Chạy Next.js Dev Server
-cd frontend
-pnpm dev    # hoặc pnpm run dev
+```ini
+CRAG_HOME=~/.crag
+DB_PATH=~/.crag/app.db
+CHROMA_DIR=~/.crag/chroma
 ```
-- **Truy cập Next.js Dev Server:** `http://localhost:3000/`
-- Giao diện tự động kết nối với API backend tại cổng 8000.
 
-### Tính năng Nổi bật của Giao diện Next.js:
-- **Khung chat tương tác:** Render Markdown mượt mà, định dạng nổi bật các thẻ trích dẫn căn cứ pháp luật tím (`[DOC_...]`).
-- **Thanh chọn ngày hiệu lực (`as_of_date`):** Cho phép người dùng kiểm tra hiệu lực pháp lý tại bất kỳ mốc thời gian nào.
-- **Sidebar:** Quản lý phiên, hiển thị hồ sơ Semantic Memory và danh mục văn bản nội bộ.
-- **Bảng Vết Thực Thi (Execution Trace Drawer):** Theo phong cách DeepSeek Harness & Hermes Agent, hiển thị trực quan Route, CRAG Action, Báo cáo trích dẫn, và các thẻ Evidence Cards kèm điểm số relevance.
-### Các Endpoints chính:
+### LangFuse
 
-| Phương thức | Endpoint | Chức năng |
-|---|---|---|
-| `GET` | `/api/health` | Kiểm tra trạng thái hoạt động của server |
-| `POST` | `/api/chat` | Tiếp nhận câu hỏi, chạy đồ thị CRAG, trả về JSON câu trả lời, bằng chứng và trích dẫn |
-| `GET` | `/api/documents` | Lấy danh mục các văn bản quy phạm pháp luật đã được nạp |
-| `GET` | `/api/history/{client_id}` | Lấy lịch sử hội thoại của một client |
-| `GET` | `/api/memory/{client_id}` | Xem hồ sơ Semantic Profile của client |
-| `DELETE` | `/api/memory/{client_id}` | Xóa hồ sơ bộ nhớ của client |
+Tùy chọn:
 
-### Ví dụ gọi thử nghiệm qua `curl`:
+```ini
+LANGFUSE_PUBLIC_KEY=
+LANGFUSE_SECRET_KEY=
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
+```
+
+## 6. Khởi tạo hệ thống
+
+Chạy một lần sau khi setup môi trường:
+
 ```bash
-curl -X POST http://localhost:8000/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "Văn bản số 41/2024/QH15 còn hiệu lực không?",
-    "client_id": "browser_client_001"
+uv run python init_system.py
+```
+
+Lệnh này khởi tạo runtime storage, SQLite và các thư mục cần thiết dưới `~/.crag/`.
+
+Kiểm tra:
+
+```bash
+ls -la ~/.crag
+```
+
+## 7. Chạy backend FastAPI
+
+Terminal 1, từ thư mục `crag/`:
+
+```bash
+uv run uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Kiểm tra:
+
+```bash
+curl http://localhost:8000/api/health
+```
+
+Swagger:
+
+```text
+http://localhost:8000/docs
+```
+
+Backend:
+
+```text
+http://localhost:8000
+```
+
+## 8. Chạy frontend
+
+Terminal 2:
+
+```bash
+cd crag/frontend
+pnpm dev
+```
+
+Mở:
+
+```text
+http://localhost:3000
+```
+
+Development flow:
+
+```text
+Frontend :3000
+     ↓
+FastAPI  :8000
+```
+
+Backend đã bật CORS cho frontend development.
+
+## 9. Chạy nhanh sau lần setup đầu tiên
+
+### Terminal 1 — Backend
+
+```bash
+cd crag
+uv run uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### Terminal 2 — Frontend
+
+```bash
+cd crag/frontend
+pnpm dev
+```
+
+Nếu dùng Ollama local, đảm bảo `ollama list` không báo lỗi kết nối.
+
+## 10. Admin — nạp tài liệu vào Knowledge Base
+
+Mở Admin Page trên frontend và upload tài liệu.
+
+Backend hiện chấp nhận:
+
+```text
+.pdf
+.docx
+.doc
+.txt
+.md
+```
+
+Pipeline:
+
+```text
+Upload
+  ↓
+Parse / OCR
+  ↓
+Cleaning
+  ↓
+Structuring
+  ↓
+Chunking
+  ↓
+Embedding
+  ↓
+Chroma
+  ↓
+BM25
+  ↓
+READY
+```
+
+Admin chỉ cần quan sát:
+
+- file đã upload;
+- trạng thái xử lý;
+- tiến trình hiện tại;
+- lỗi nếu có;
+- chunk sau khi hoàn tất.
+
+Embedding và indexing là bước nội bộ.
+
+### Upload một file bằng API
+
+```bash
+curl -X POST http://localhost:8000/api/admin/documents/upload   -F "file=@/path/to/document.pdf"
+```
+
+### Upload nhiều file
+
+```bash
+curl -X POST http://localhost:8000/api/admin/documents/upload-batch   -F "files=@/path/to/doc1.pdf"   -F "files=@/path/to/doc2.docx"
+```
+
+Chỉ tài liệu có trạng thái `READY` mới được CRAG retrieval sử dụng.
+
+## 11. Chat — Agentic CRAG workflow
+
+Chat không dùng Router phân loại trước.
+
+```text
+User
+ ↓
+Agent Runtime
+ ↓
+Context Manager
+ ↓
+Agent Core
+ ↓
+Tool calling
+ ├── crag_search
+ └── controlled_web_search
+ ↓
+Citation Validator
+ ↓
+Response
+```
+
+`crag_search`:
+
+```text
+Query
+  ↓
+Chroma + BM25
+  ↓
+RRF
+  ↓
+Rerank
+  ↓
+CRAG Evaluate
+  ↓
+Evidence
+```
+
+Agent có thể tiếp tục gọi `controlled_web_search` nếu evidence nội bộ chưa đủ.
+
+## 12. Test API chat
+
+```bash
+curl -X POST http://localhost:8000/api/chat   -H "Content-Type: application/json"   -d '{
+    "query": "Điều kiện sử dụng lao động nước ngoài tại Việt Nam là gì?",
+    "client_id": "demo_client"
   }'
 ```
 
----
+Các endpoint chính:
 
-## 10. Nguyên tắc An toàn Memory & Xử lý Sự cố
+| Method | Endpoint | Mục đích |
+|---|---|---|
+| `GET` | `/api/health` | Kiểm tra backend |
+| `POST` | `/api/chat` | Chat với Agent |
+| `POST` | `/api/chat/stream` | Chat SSE streaming |
+| `GET` | `/api/history/{client_id}` | Lịch sử hội thoại |
+| `GET` | `/api/memory/{client_id}` | Semantic memory |
+| `GET` | `/api/documents` | Tài liệu `READY` |
+| `GET` | `/api/admin/documents` | Danh sách tài liệu Admin |
+| `GET` | `/api/admin/documents/{id}/chunks` | Xem chunk |
+| `POST` | `/api/admin/documents/upload` | Upload một file |
+| `POST` | `/api/admin/documents/upload-batch` | Upload nhiều file |
 
-### 🔒 Nguyên tắc An toàn Bộ nhớ:
-1. **Memory Guardrail:** Bối cảnh doanh nghiệp từ Semantic Memory **chỉ được dùng để giải tham chiếu đại từ** (ví dụ: *"công ty tôi"* $\to$ Công ty TNHH tại Long An). **Tuyệt đối không sử dụng thông tin trong memory như một căn cứ pháp lý.**
-2. **Cách ly Dữ liệu Tuyệt đối:** Hệ thống đạt chỉ số **Cross-client Contamination = 0**. Dữ liệu của Client A không bao giờ xuất hiện trong phiên truy vấn của Client B.
+## 13. CLI
 
-### 🛠️ Xử lý Sự cố Thường gặp:
+Chat qua terminal:
 
-- **Lỗi `ModuleNotFoundError: No module named 'agent'`:**  
-  *Nguyên nhân:* Chạy file trực tiếp từ thư mục con mà không có project root trong `sys.path`.  
-  *Cách khắc phục:* Đã được tích hợp sẵn `sys.path.insert(0, ...)` ở đầu các script, hoặc chạy dạng module: `python -m agent.graph`.
-- **Lỗi thiếu API Key của LLM Cloud:**  
-  *Khắc phục:* Hệ thống có sẵn bộ suy diễn xác định *Deterministic Offline Synthesis*, bạn hoàn toàn có thể chạy test và demo đầy đủ mà không bắt buộc phải có API Key trả phí.
-- **Muốn nạp thêm văn bản mới:**  
-  Tải lên qua Admin UI (`/admin`) hoặc `POST /api/admin/documents/upload` — pipeline nạp dữ liệu chạy nền tự động, không cần restart server hay chạy script thủ công.
+```bash
+uv run python main.py
+```
+
+Khởi tạo:
+
+```bash
+uv run python main.py --init
+```
+
+Demo mode:
+
+```bash
+uv run python main.py --demo
+```
+
+## 14. Evaluation
+
+```bash
+uv run python eval/run_eval.py
+```
+
+Kết quả phụ thuộc vào corpus, model, provider và threshold hiện tại.
+
+## 15. Build frontend
+
+```bash
+cd frontend
+pnpm build
+```
+
+Frontend dùng Next.js static export và tạo output tại:
+
+```text
+frontend/out/
+```
+
+Quay về root:
+
+```bash
+cd ..
+```
+
+## 16. Cập nhật dependencies
+
+### Backend
+
+Đồng bộ đúng `uv.lock`:
+
+```bash
+uv sync --python 3.13 --frozen
+```
+
+Nếu chủ động thay đổi dependency:
+
+```bash
+uv lock
+uv sync --python 3.13
+```
+
+### Frontend
+
+```bash
+cd frontend
+pnpm install --frozen-lockfile
+```
+
+## 17. Troubleshooting
+
+### `uv: command not found`
+
+```bash
+source ~/.bashrc
+```
+
+Hoặc cài lại theo [INSTALL.md](INSTALL.md).
+
+### Python không phải 3.13
+
+```bash
+uv run python --version
+uv sync --python 3.13
+```
+
+### `nvm: command not found`
+
+```bash
+source ~/.bashrc
+command -v nvm
+```
+
+### `pnpm: command not found`
+
+```bash
+npm install -g pnpm@11.18.0
+```
+
+### Ollama không kết nối được
+
+Ubuntu systemd:
+
+```bash
+sudo systemctl status ollama
+sudo systemctl restart ollama
+```
+
+Không có systemd:
+
+```bash
+ollama serve
+```
+
+### Port 8000 đã được sử dụng
+
+```bash
+sudo lsof -i :8000
+```
+
+Có thể chạy port khác:
+
+```bash
+uv run uvicorn api.main:app --host 0.0.0.0 --port 8001 --reload
+```
+
+### Frontend không kết nối backend
+
+Kiểm tra:
+
+```bash
+curl http://localhost:8000/api/health
+```
+
+Nếu frontend và backend chạy trên hai máy khác nhau, cần cấu hình frontend trỏ tới địa chỉ backend thực tế.
+
+### Upload bị lỗi
+
+Kiểm tra log backend và trạng thái document trong Admin UI. Document chưa đạt `READY` sẽ không được CRAG retrieval sử dụng.
+
+## 18. Tài liệu liên quan
+
+- [Installation Guide](INSTALL.md)
+- [Workflow](WORKFLOW.md)
+- [Knowledge Base](KNOWLEDGE_BASE.md)
+- [Technical Documentation](TECHNICAL.md)
+
+```text
+INSTALL.md
+    ↓
+SETUP_AND_RUN.md
+    ↓
+WORKFLOW.md / KNOWLEDGE_BASE.md
+```
