@@ -1,35 +1,4 @@
-"""Legal Document Parser with Hierarchical Chunking (Legal-aware Chunking).
-
-Breaks down Vietnamese normative legal documents following the hierarchical structure:
-Văn bản -> Chương -> Điều -> Khoản -> Điểm.
-Preserves provenance and deterministic locators for citation validation.
-
-Structure recognition is layered instead of hardcoding one document's phrasing
-for its non-Điều sections (Phụ lục / Danh mục / Biểu mẫu / ... — the trailing
-annex name varies per document even though the underlying drafting convention
-does not):
-
-1. Official vocabulary (law-mandated, not a per-document quirk): every
-   Vietnamese normative document follows Nghị định 78/2025/NĐ-CP (and its
-   predecessors) — Phần -> Chương -> Mục -> Tiểu mục -> Điều -> Khoản -> Điểm,
-   with Phụ lục identifiers/titles always rendered in full uppercase.
-   CHAPTER_PATTERN/ARTICLE_PATTERN/CLAUSE_PATTERN/POINT_PATTERN encode exactly
-   this vocabulary and nothing document-specific.
-2. Generic structural fallback for anything else: a document's own
-   non-standard section heading (e.g. "DANH MỤC ...", "BẢNG GIÁ ...", "MẪU SỐ
-   01" — whatever that document actually calls its trailing annex) is
-   recognized the same way a reader skims a scanned legal PDF: a short,
-   standalone line with no lowercase letters and no terminal sentence
-   punctuation, appearing after the document's Điều body has already started.
-   `_is_heading_like` implements that signal; no specific heading word is
-   hardcoded anywhere in this module.
-3. Recurring page furniture (running headers/footers, letterhead, signature
-   blocks, table column headers repeated on every page) is stripped before
-   structural parsing by frequency: any short line containing a letter that
-   appears verbatim 2+ times across the document is furniture, since real
-   prose is never byte-identical across pages. This keeps #2 from mistaking a
-   repeated table header for a new section on every page break.
-"""
+"""Hierarchical legal document parser for Vietnamese normative legal texts."""
 from __future__ import annotations
 
 import re
@@ -53,12 +22,7 @@ POINT_PATTERN = re.compile(
     r"^([a-zđ])\)\s+(.*)$",
     re.IGNORECASE | re.MULTILINE,
 )
-# A bare-integer line inside a flat numbered table/annex row (e.g. "10" alone
-# on its own line, the row's description following on subsequent lines) —
-# distinct from CLAUSE_PATTERN, which requires the number and its text on one
-# line ("1. Nội dung..."). Matched only against the *expected next* value
-# (tracked in `parse_legal_document`) so page numbers and other stray bare
-# digits interleaved by PDF text extraction are never mistaken for a new row.
+# Bare integer pattern for numbered table rows and annex items.
 STT_ITEM_PATTERN = re.compile(r"^(\d{1,3})$")
 
 _HEADING_MIN_LEN = 4
@@ -66,17 +30,7 @@ _HEADING_MAX_LEN = 100
 
 
 def _is_heading_like(line: str) -> bool:
-    """Keyword-free structural heading signal.
-
-    A line "looks like" a section heading when it is short, stands alone (no
-    trailing sentence punctuation), and contains no lowercase letters — the
-    rendering convention Vietnamese legal drafting rules mandate for Phụ lục
-    titles, and that in practice every other top-level heading a document
-    defines (official or not) also follows. Ordinary prose fails this: it
-    wraps across many lines and virtually always ends a sentence/paragraph in
-    terminal punctuation, and Vietnamese diacritics make accidental
-    all-uppercase prose exceedingly rare.
-    """
+    """Detect if a line represents a section heading based on structural conventions."""
     if not (_HEADING_MIN_LEN <= len(line) <= _HEADING_MAX_LEN):
         return False
     if line[-1] in ".,;":
@@ -90,16 +44,7 @@ def _is_heading_like(line: str) -> bool:
 def _strip_recurring_boilerplate(
     lines: List[str], line_pages: List[Optional[int]]
 ) -> Tuple[List[str], List[Optional[int]]]:
-    """Drop running headers/footers/letterhead/signature-block furniture.
-
-    Any stripped line containing a letter that recurs verbatim 2+ times
-    across the document is page furniture, not content — real prose is never
-    byte-identical across pages. Pure-digit lines (STT/page numbers) are left
-    untouched regardless of frequency: `parse_legal_document` already
-    disambiguates those from noise by sequence position (the *expected next*
-    STT value), which frequency alone cannot do since a genuine row number
-    can coincidentally match an unrelated page number elsewhere.
-    """
+    """Drop recurring headers, footers, letterheads, and signature furniture across pages."""
     counts = Counter(
         s for s in (l.strip() for l in lines) if s and any(ch.isalpha() for ch in s)
     )
@@ -118,26 +63,7 @@ def parse_legal_document(
     doc_metadata: Dict[str, Any],
     pages_data: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
-    """Parse raw Vietnamese legal document text into structured provisions.
-
-    Parameters
-    ----------
-    raw_text : str
-        Full text or section text of the legal document. Used verbatim when
-        `pages_data` is not supplied.
-    doc_metadata : dict
-        Document metadata (id, document_number, title, etc.)
-    pages_data : list of dict, optional
-        Per-page records `{"page_number": int, "text": str, ...}` as returned by
-        `UniversalLegalPreprocessor.extract_text_from_pdf`. When supplied, each
-        emitted provision is tagged with the page range its source lines came
-        from (`page_start`/`page_end`); otherwise both are `None`.
-
-    Returns
-    -------
-    list of dict
-        Structured provision chunks ready for database storage and indexing.
-    """
+    """Parse raw Vietnamese legal document text into structured provisions."""
     doc_id = doc_metadata.get("id", "DOC")
     doc_number = doc_metadata.get("document_number", "")
     doc_title = doc_metadata.get("title", "")
@@ -506,10 +432,7 @@ def split_clauses(article_text: str) -> List[tuple[str, str]]:
 
 
 def split_into_legal_strips(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Decompose a provision chunk into atomic legal strips (Khoản / Điểm).
-
-    Used in Step 11-14: Knowledge Refinement to score and extract only relevant strips.
-    """
+    """Decompose a provision chunk into atomic legal strips (Khoản / Điểm)."""
     text = doc.get("text", "")
     locator = doc.get("locator") or doc.get("id") or doc.get("evidence_id", "E")
     heading = doc.get("heading", "")

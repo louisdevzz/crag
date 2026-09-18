@@ -30,20 +30,7 @@ def parse_date(date_str: Optional[str]) -> Optional[date]:
 
 
 def is_effective_at(doc_meta: Dict[str, Any], as_of_date_str: Optional[str] = None) -> bool:
-    """Check if a legal document or provision is in effect on a given reference date.
-
-    Parameters
-    ----------
-    doc_meta : dict
-        Metadata containing 'effective_from', 'effective_to', and 'status'.
-    as_of_date_str : str, optional
-        Target reference date (default: today or 2026-01-01).
-
-    Returns
-    -------
-    bool
-        True if the document is active and valid on as_of_date, False otherwise.
-    """
+    """Check if a legal document or provision is in effect on a given reference date."""
     status = str(doc_meta.get("status", "")).lower().strip()
     if status == "expired" or status == "hethieuluc":
         return False
@@ -79,13 +66,7 @@ def get_document_rank(doc_type_or_title: str) -> int:
 
 
 def resolve_legal_conflict(doc_a: Dict[str, Any], doc_b: Dict[str, Any], as_of_date: Optional[str] = None) -> Dict[str, Any]:
-    """Resolve conflict between two legal documents based on hierarchy and temporal validity.
-
-    Rules:
-    1. Only effective documents at as_of_date are considered.
-    2. Higher normative rank prevails (e.g. Luật > Nghị định).
-    3. If same rank, newer document (effective_from) prevails (Lex posterior derogat legi priori).
-    """
+    """Resolve conflict between two legal documents based on hierarchy and temporal validity."""
     eff_a = is_effective_at(doc_a, as_of_date)
     eff_b = is_effective_at(doc_b, as_of_date)
 

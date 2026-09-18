@@ -1,14 +1,4 @@
-"""Universal Legal Data Pre-processing Pipeline for Vietnamese Normative Documents.
-
-Capabilities:
-1. Universal Format Ingestion: Handles digital text PDFs, scanned/image PDFs, DOCX, and TXT.
-2. Multimodal Vision LLM OCR: When pages are scanned images without text layers,
-   renders the page and transcribes via Vision LLM (OpenAI, Groq, OpenRouter, Ollama) with disk caching.
-3. Automatic Legal Metadata Extraction: Extracts document number, title, type, authority,
-   promulgation date, and effective date.
-4. Hierarchical Structure Parsing: Breaks text into Chương -> Điều -> Khoản -> Điểm
-   with deterministic locators and provenance breadcrumbs.
-"""
+"""Universal legal document pre-processing pipeline for Vietnamese normative documents."""
 from __future__ import annotations
 
 import base64
@@ -34,11 +24,7 @@ log = get_logger(__name__)
 OCR_CACHE_DIR = PROCESSED_DATA_DIR / "ocr_cache"
 SCANNED_PAGES_DIR = PROCESSED_DATA_DIR / "scanned_pages"
 
-# How many pages' Vision LLM OCR calls run concurrently. Rendering a page to
-# an image (`pymupdf`) is CPU-only and effectively instant; transcribing it
-# is a several-second network round trip and the actual bottleneck for a
-# large scanned document, so only that step is parallelized (bounded to
-# avoid tripping the vision provider's rate limit).
+# Concurrent Vision LLM OCR workers for scanned document transcription.
 OCR_CONCURRENCY = max(1, int(os.getenv("OCR_CONCURRENCY", "4")))
 
 
@@ -112,26 +98,7 @@ class UniversalLegalPreprocessor:
         max_pages: Optional[int] = None,
         on_ocr_progress: Optional[Callable[[int, int], None]] = None,
     ) -> Tuple[str, List[Dict[str, Any]]]:
-        """Extract text from PDF page by page. Uses digital text if present; falls back to Vision OCR.
-
-        Rendering (`pymupdf`, CPU-only, milliseconds/page) always runs
-        sequentially on this thread — `fitz` Document/Page objects aren't
-        safe to touch from multiple threads. The real bottleneck for a large
-        scanned document is each page's Vision LLM network round trip
-        (seconds); only that step runs concurrently, across up to
-        `OCR_CONCURRENCY` worker threads once every page's image bytes have
-        already been rendered — a 45-page scan OCRs in roughly
-        `45 / OCR_CONCURRENCY` round trips instead of 45.
-
-        `on_ocr_progress(completed, total)` — when given — fires after each
-        OCR'd page so the caller (`ingestion.pipeline`) can surface live
-        "OCR trang N/M" progress instead of the stage sitting still for
-        however long the whole document takes.
-
-        Returns
-        -------
-        (full_text, page_records)
-        """
+        """Extract text from PDF page by page, using digital text or falling back to Vision OCR."""
         pdf_path = Path(pdf_path)
         doc = pymupdf.open(pdf_path)
         total_pages = len(doc)
@@ -229,17 +196,7 @@ class UniversalLegalPreprocessor:
         return ""
 
     def _call_vision_llm(self, image_bytes: bytes, page_num: int, doc_stem: str) -> Optional[str]:
-        """Call Vision LLM to transcribe legal page image into exact Vietnamese text.
-
-        Tries `self.vision_provider`/`self.vision_model` (VISION_PROVIDER/VISION_MODEL,
-        defaulting to LLM_PROVIDER) first, then falls back to the other configured
-        providers in `_VISION_PROVIDERS` — each skipped outright when its API key is
-        absent or still the placeholder shipped in `.env.example`, so a single-provider
-        setup (the common case) never wastes a request on an unconfigured one.
-
-        Runs on an OCR worker thread (see `extract_text_from_pdf`) — safe: each call
-        builds its own client instance (`spec["build"](...)`) rather than sharing one.
-        """
+        """Call Vision LLM to transcribe legal page image into exact Vietnamese text."""
         from langchain_core.messages import HumanMessage
 
         b64_image = base64.b64encode(image_bytes).decode("utf-8")
@@ -376,12 +333,7 @@ class UniversalLegalPreprocessor:
         file_path: str | Path,
         max_pages: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """End-to-end processing of a single legal file into structured provisions.
-
-        Returns
-        -------
-        dict with keys: metadata, raw_text, provisions, strips, stats
-        """
+        """End-to-end processing of a single legal file into structured provisions."""
         file_path = Path(file_path)
         ext = file_path.suffix.lower()
 
@@ -422,16 +374,7 @@ class UniversalLegalPreprocessor:
         return result
 
     def _extract_text_from_docx(self, docx_path: Path) -> str:
-        """Extract text from a Word document — modern `.docx` (OOXML/zip) or
-        legacy binary `.doc` (OLE2 Compound File — an entirely different
-        container format, not a zip, so python-docx cannot open it at all;
-        it raises `zipfile.BadZipFile` on one).
-
-        `.docx` is parsed directly with python-docx. Legacy `.doc` is parsed
-        with `sharepoint2text`, a pure-Python OLE2/MS-DOC reader — no
-        external binary (antiword/LibreOffice) or JVM (Apache Tika)
-        dependency, unlike every other common approach to this format.
-        """
+        """Extract text from a Word document (.docx or legacy .doc)."""
         if docx_path.suffix.lower() == ".doc":
             import sharepoint2text
             document = next(sharepoint2text.read_file(docx_path))

@@ -11,28 +11,7 @@ def validate_citations(
     evidence_map: Dict[str, Dict[str, Any]],
     as_of_date: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Validate citations in LLM answer against retrieved legal evidence.
-
-    Ensures:
-    1. Every cited source_id exists in the provided evidence map.
-    2. The referenced legal document is in effect as of the reference date.
-    3. Computes Citation Accuracy and Citation Coverage metrics.
-
-    Parameters
-    ----------
-    answer : dict
-        LLM generation output with format:
-        {"answer": str, "claims": [{"text": str, "source_ids": list[str]}], "abstain": bool}
-    evidence_map : dict
-        Mapping from evidence_id / locator to evidence dict.
-    as_of_date : str, optional
-        Reference date (YYYY-MM-DD) to test temporal validity.
-
-    Returns
-    -------
-    dict
-        Validation report with {"ok": bool, "errors": list[str], "valid_citations": list[str], ...}
-    """
+    """Validate citations in LLM answer against retrieved legal evidence and temporal validity."""
     errors: List[str] = []
     valid_citations: List[str] = []
     total_cited = 0

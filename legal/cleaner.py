@@ -1,6 +1,4 @@
-"""Text Cleaning & Normalization — sits between Parse/OCR and the Legal
-Structure Parser (`legal.parser.parse_legal_document`):
-"""
+"""Text cleaning and normalization module for legal document ingestion."""
 from __future__ import annotations
 
 import re
@@ -9,50 +7,26 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from legal.parser import ARTICLE_PATTERN, CHAPTER_PATTERN, _is_heading_like
 
-# Invisible characters PDF/DOCX extraction sometimes leaves behind: zero-width
-# space/non-joiner/joiner/marks, BOM, soft hyphen. Removed outright (they
-# carry no visual or structural meaning); NBSP is folded into a regular
-# space instead so the whitespace-collapsing pass below absorbs it.
+# Invisible characters and non-breaking spaces.
 _INVISIBLE_CHARS = re.compile("[\u200b\u200c\u200d\u200e\u200f\ufeff\u00ad]")
 _NBSP = re.compile("\u00a0")
 
-# A line made *entirely* of repeated separator/decoration characters — dot
-# leaders, dash/underscore rules, bullet rows — optionally followed by ONE
-# trailing punctuation mark. Never matches a line carrying any actual word
-# text (letters/digits break the class), so `Điều 1.`, `1.`, `a)` are always
-# safe. The trailing mark covers the blank-fill lines official form
-# templates render for a field to hand-write in, e.g.
-# "........................................ ;" (verified against a real
-# annex form in `01/2017/TT-BQP`) — pure decoration otherwise, just
-# terminated by the form's own field-separator punctuation instead of
-# running to end of line.
+# Repeated separator and decoration line pattern.
 _DECORATION_LINE = re.compile(r"^[.\-_=~·•●○∙*\s]{4,}[;:,.]?\s*$")
 
-# A numbered/lettered clause marker ("1.", "a)") whose *entire* body is
-# itself pure dot-leader filler — a blank field on an official form template
-# waiting to be hand-written in (e.g. "1. .......................... ;"),
-# verified against real annex forms in `01/2017/TT-BQP`). Carries zero
-# retrieval value; dropped whole (marker included) rather than leaving a
-# structurally-real but semantically-empty "Khoản 1" in the parsed output.
+# Blank clause marker line on form templates.
 _BLANK_CLAUSE_LINE = re.compile(
     r"^(\d{1,3}\.|[a-zđA-ZĐ]\))\s*[.\-_=~·•●○∙*\s]{4,}[;:,.]?\s*$",
     re.IGNORECASE,
 )
 
-# Table-of-contents row: some heading text, a run of 4+ dot-leader
-# characters, then a trailing page number — e.g.
-# "Điều 7 ........................... 12". Dropped whole rather than having
-# just its dots stripped (see module docstring for why).
+# Table-of-contents entry line pattern.
 _TOC_LINE = re.compile(r"^.{2,80}\.{4,}\s*\d{1,4}\s*$")
 
-# The "MỤC LỤC" ("Table of Contents") section title itself — once its rows
-# (`_TOC_LINE`, above) are gone this bare title carries no retrieval value
-# either.
+# Table-of-contents section title line pattern.
 _TOC_TITLE_LINE = re.compile(r"^(MỤC\s+LỤC|TABLE\s+OF\s+CONTENTS)$", re.IGNORECASE)
 
-# Standalone running page number in an unambiguous format only: "Trang 12",
-# "Trang 12/45", "Page 12", "12/45". A bare "12" with no prefix/suffix is
-# intentionally NOT matched here (see module docstring).
+# Unambiguous standalone page number pattern.
 _PAGE_NUMBER_LINE = re.compile(
     r"^(Trang|Page)\s+\d{1,4}(\s*/\s*\d{1,4})?$|^\d{1,4}\s*/\s*\d{1,4}$",
     re.IGNORECASE,
@@ -61,17 +35,10 @@ _PAGE_NUMBER_LINE = re.compile(
 # Footer URL / scan artifact line.
 _URL_LINE = re.compile(r"^(https?://|www\.)\S+$", re.IGNORECASE)
 
-# Start of the "Nơi nhận:" (distribution list) signature block that
-# terminates most Vietnamese normative documents.
+# Start of distribution list ("Nơi nhận:").
 _SIGNATURE_START = re.compile(r"^N[ơo]i\s+nh[ậa]n\s*:?\s*$", re.IGNORECASE)
 
-# "(Đã ký)" / "(Đã ký, đóng dấu)" — the signature-stamp marker Vietnamese
-# normative documents render in place of an actual signature. Unlike
-# `_SIGNATURE_START`, this fires the signature-block skip even when there is
-# no preceding "Nơi nhận:" distribution list (a real document, verified
-# against `01/2017/TT-BQP`: its signature block is bare "KT. BỘ TRƯỞNG /
-# THỨ TRƯỞNG / (Đã ký) / <tên>" with no "Nơi nhận:" anywhere near it) — see
-# `clean_pages` for how the preceding title line gets retroactively popped.
+# Signature marker pattern ("(Đã ký)").
 _SIGNATURE_MARKER = re.compile(r"^\(\s*[ĐđDd][ãa]\s*k[ýy][^)]*\)$", re.IGNORECASE)
 
 
@@ -87,12 +54,7 @@ def _collapse_whitespace(line: str) -> str:
 
 
 def clean_line(line: str) -> Optional[str]:
-    """Clean one physical line.
-
-    Returns the cleaned, whitespace-collapsed line; `""` for a genuinely
-    blank line (kept as a paragraph separator upstream); `None` when the
-    whole line is decoration/furniture and must be dropped.
-    """
+    """Clean one physical line, returning cleaned text, blank line, or None if dropped."""
     line = _strip_invisible(line)
     stripped = _collapse_whitespace(line)
     if not stripped:
@@ -113,14 +75,7 @@ def clean_line(line: str) -> Optional[str]:
 
 
 def clean_pages(pages_data: List[Dict[str, Any]]) -> Tuple[str, List[Dict[str, Any]]]:
-    """Clean every page's text in place (returns new records; input untouched).
-
-    Mirrors `UniversalLegalPreprocessor.extract_text_from_pdf`'s return shape
-    `(full_text, page_records)` so it drops straight into
-    `ingestion.pipeline.run_ingestion_pipeline` between text extraction and
-    `legal.parser.parse_legal_document`, and `page_start`/`page_end`
-    provenance keeps working unchanged.
-    """
+    """Clean text across extracted pages, stripping furniture and normalizing spacing."""
     cleaned_pages: List[Dict[str, Any]] = []
     full_text_chunks: List[str] = []
     in_signature = False
