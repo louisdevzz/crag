@@ -180,11 +180,24 @@ def main():
         action="store_true",
         help="When used with --init, wipe and cleanly reinitialize the SQLite database",
     )
+    parser.add_argument(
+        "--ingest-folder",
+        type=str,
+        help="Nạp toàn bộ tài liệu pháp lý (.pdf, .docx, .doc, .txt, .md) từ một thư mục vào Knowledge Base",
+    )
+    parser.add_argument(
+        "--replace",
+        action="store_true",
+        help="Khi nạp tài liệu, cho phép ghi đè nếu tệp đã tồn tại trong hệ thống",
+    )
     args = parser.parse_args()
 
     if args.init:
         from scripts.init_system import init_system
         init_system(check_models=args.check_models, reset=args.reset)
+    elif args.ingest_folder:
+        from scripts.ingest_folder import ingest_folder
+        ingest_folder(args.ingest_folder, replace=args.replace)
     elif args.demo:
         run_demo_suite()
     else:
