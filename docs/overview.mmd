@@ -1,0 +1,28 @@
+%%{init: {'theme': 'default', 'themeVariables': {'background': '#FFFFFF', 'fontFamily': 'sans-serif', 'fontSize': '14px'}}}%%
+flowchart TD
+    APP([Legal CRAG Assistant]):::cApp
+    
+    APP --> CHAT_FLOW
+    APP --> ADMIN_FLOW
+
+    subgraph CHAT_FLOW ["Chat Workflow (Phục vụ Người Dùng)"]
+        direction TB
+        RUNTIME[Agent Runtime]:::cChat
+        CRAG[Agentic CRAG Core]:::cChat
+        RUNTIME --> CRAG
+    end
+
+    subgraph ADMIN_FLOW ["Admin Workflow (Quản lý Dữ liệu)"]
+        direction TB
+        INGEST[Ingestion Pipeline]:::cAdmin
+        KB[Knowledge Base]:::cAdmin
+        INGEST --> KB
+    end
+
+    CRAG --> SHARED[(Shared Data Layer<br/>SQLite · Chroma · BM25)]:::cShared
+    KB --> SHARED
+
+    classDef cApp fill:#3182CE,stroke:#2B6CB0,stroke-width:2px,color:#FFFFFF;
+    classDef cChat fill:#FAF5FF,stroke:#805AD5,stroke-width:2px,color:#553C9A;
+    classDef cAdmin fill:#C6F6D5,stroke:#38A169,stroke-width:2px,color:#22543D;
+    classDef cShared fill:#FEFCBF,stroke:#D69E2E,stroke-width:2px,color:#744210;
