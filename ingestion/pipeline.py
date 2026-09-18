@@ -1,16 +1,4 @@
-"""Staged ingestion pipeline orchestration: PARSING -> [OCR] -> CLEANING ->
-STRUCTURING -> CHUNKING -> EMBEDDING -> INDEXING -> READY. Each stage updates
-the document's `ingestion_jobs` row (coarse `stage`/`progress` plus a
-fine-grained `detail`/`processed_units`/`total_units` that moves *within* a
-stage — "OCR trang 12/45", "Đang nhúng đoạn 320/1200") so the Admin UI can
-render a live processing checklist that keeps moving even on a large
-multi-page document, and every stage/sub-step is timed to the console via
-`logging_config.timed_stage` for diagnosing exactly where time goes.
-
-Runs on a background worker thread (see `ingestion.worker`); a failure at any stage
-flips `documents.status` to FAILED with `error_message` set and leaves no partial
-vectors behind.
-"""
+"""Staged ingestion pipeline orchestration from parsing to indexing."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -31,8 +19,7 @@ log = get_logger(__name__)
 
 
 def _needs_ocr(pdf_path: Path) -> bool:
-    """True when at least one page lacks a digital text layer (checked up front so the
-    OCR stage can be reported *before* the per-page Vision LLM calls actually run)."""
+    """Return True if any page in the PDF lacks a digital text layer."""
     doc = pymupdf.open(pdf_path)
     try:
         return any(len(doc[i].get_text("text").strip()) <= 50 for i in range(len(doc)))
@@ -67,15 +54,7 @@ def _extract_text(file_path: Path, job_id: str) -> Tuple[str, List[Dict[str, Any
 
 
 def run_ingestion_pipeline(document_id: str, rebuild_bm25: bool = True) -> None:
-    """Execute the full staged pipeline for one already-created `documents` row.
-
-    `rebuild_bm25=False` — used by `ingestion.worker.submit_batch_ingestion` for a
-    folder/multi-file upload — skips the corpus-wide BM25 rebuild here; the caller
-    rebuilds it exactly once after every document in the batch has finished, instead
-    of once per document (rebuilding tokenizes every READY chunk in the whole
-    corpus, so doing it N times for an N-file batch is O(N * corpus_size) instead
-    of O(corpus_size)).
-    """
+    """Execute the full staged ingestion pipeline for an uploaded document."""
     job = jobs_repo.get_job_for_document(document_id)
     if job is None:
         raise RuntimeError(f"No ingestion job found for document {document_id}")

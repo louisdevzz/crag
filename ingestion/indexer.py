@@ -1,7 +1,4 @@
-"""Chroma + BM25 index maintenance, sourced exclusively from `document_chunks` joined
-to `documents WHERE status = 'READY'` — the single gate that keeps PROCESSING/FAILED/
-UPLOADED documents invisible to CRAG retrieval.
-"""
+"""Chroma and BM25 index maintenance for READY document chunks."""
 from __future__ import annotations
 
 import pickle
@@ -39,14 +36,7 @@ def rebuild_bm25_index(
     db_path: Path | str = DB_PATH,
     index_path: Path | str = PROCESSED_DATA_DIR / "bm25_index.pkl",
 ) -> int:
-    """Rebuild the BM25 lexical index from every READY document's chunks.
-
-    O(total corpus chunks) — retokenizes everything, not just what changed —
-    so a batch/folder upload of N documents must call this once after the
-    whole batch (`ingestion.pipeline.run_ingestion_pipeline(..., rebuild_bm25=False)`
-    + one final call), never once per document, or it degrades to
-    O(N * corpus_size).
-    """
+    """Rebuild the BM25 lexical index from all READY document chunks."""
     start = time.perf_counter()
     rows = _ready_chunk_rows(db_path)
     for r in rows:
@@ -90,13 +80,7 @@ def index_document_chunks(
     chroma_dir: Path | str = CHROMA_DIR,
     on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> int:
-    """(Re-)embed and index every chunk of one document into Chroma. Drops any stale
-    vectors for the document first so re-ingestion never duplicates entries.
-
-    `on_progress(done, total)` — when given — fires after each embedding batch so
-    a document with hundreds/thousands of chunks shows moving progress instead of
-    sitting on "EMBEDDING" for however long the whole document takes.
-    """
+    """Embed and index all chunks of a document into Chroma with progress callbacks."""
     remove_document_from_chroma(document_id, chroma_dir=chroma_dir)
 
     rows = [r for r in _ready_chunk_rows(db_path) if r["document_id"] == document_id]
@@ -128,10 +112,7 @@ def index_document_chunks(
 
 
 def remove_document_from_chroma(document_id: str, chroma_dir: Path | str = CHROMA_DIR) -> None:
-    """Delete every vector belonging to one document. Lets a real Chroma/DB error
-    propagate instead of swallowing it — a caller (document delete, or re-ingestion's
-    drop-before-reindex) must see the failure rather than silently leave orphaned
-    vectors behind while believing the removal succeeded."""
+    """Delete all vector embeddings belonging to a specified document from Chroma."""
     vectorstore = get_vectorstore(chroma_dir)
     existing = vectorstore.get(where={"document_id": document_id})
     if existing and existing.get("ids"):

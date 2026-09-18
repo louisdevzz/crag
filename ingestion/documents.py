@@ -1,10 +1,4 @@
-"""Documents CRUD: the Admin corpus catalog (`documents` table).
-
-`status` lifecycle: UPLOADED -> PROCESSING -> READY | FAILED. Only `READY` rows
-are visible to CRAG retrieval (see `ingestion.indexer`). `legal_status` is a
-separate concern (effective/expired legal effectiveness of the document itself,
-independent of ingestion progress) — never conflate the two.
-"""
+"""Documents CRUD operations for the corpus catalog database."""
 from __future__ import annotations
 
 import sqlite3

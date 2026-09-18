@@ -1,9 +1,4 @@
-"""Document chunk persistence: the indexed retrieval unit (`document_chunks` table).
-
-One chunk per legal provision (Chương -> Điều -> Khoản) produced by
-`legal.parser.parse_legal_document`, at the granularity CRAG retrieval and the
-Admin chunk browser both operate on.
-"""
+"""Document chunk persistence for indexed retrieval units."""
 from __future__ import annotations
 
 from pathlib import Path
