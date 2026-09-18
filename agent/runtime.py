@@ -1,14 +1,4 @@
-"""Agent Runtime: the single entry point that owns session resolution, context
-assembly, graph invocation, and turn persistence — so the CLI, the eval harness,
-and both FastAPI chat endpoints share one turn lifecycle instead of re-implementing
-it three times (the previous source of drift between them).
-
-    prepare_turn()  -> resolve client/session, extract memories, build context,
-                        assemble the AgentState input dict (Context Manager step)
-    <caller invokes the Agent Core graph itself, streaming or not>
-    persist_turn()  -> write the user + assistant messages back to SQLite
-    invoke_crag()   -> the full non-streaming turn (prepare -> invoke -> persist)
-"""
+"""Agent runtime for session resolution, context assembly, and turn persistence."""
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
@@ -27,17 +17,13 @@ def prepare_turn(
     query: str,
     as_of_date: Optional[str] = None,
 ) -> Tuple[str, str, Dict[str, Any]]:
-    """Resolve client/session identity and assemble one turn's `AgentState` input.
-
-    Returns (resolved_client_id, resolved_session_id, state_input).
-    """
+    """Resolve client/session identity and assemble initial AgentState input for a turn."""
     store = get_memory_store()
     client_record = store.get_or_create_client(client_id)
     resolved_client_id = client_record["id"]
     resolved_session_id = store.create_session(resolved_client_id, session_id)
 
-    # Semantic memory extraction happens before context assembly so this turn's
-    # own disclosures (e.g. "công ty tôi ở Long An") are already available to it.
+    # Extract semantic memories before context assembly for immediate availability.
     extract_and_save_memories(resolved_client_id, query)
     context = build_context(resolved_client_id, resolved_session_id)
 

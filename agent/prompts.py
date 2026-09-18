@@ -1,5 +1,4 @@
-"""System prompt construction for the Agent Core ReAct loop.
-"""
+"""System prompt construction for the Agent Core ReAct loop."""
 from __future__ import annotations
 
 from typing import Any, Dict
@@ -32,6 +31,7 @@ BỐI CẢNH DOANH NGHIỆP / KHÁCH HÀNG (dữ liệu tham khảo, không ph�
 
 
 def build_system_prompt(state: Dict[str, Any]) -> str:
+    """Build system prompt populated with date, history, and memory context."""
     as_of_date = state.get("as_of_date")
     as_of_block = f"\nNGÀY THAM CHIẾU HIỆU LỰC: {as_of_date}\n" if as_of_date else ""
     return SYSTEM_PROMPT_TEMPLATE.format(

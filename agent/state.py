@@ -9,12 +9,7 @@ from langgraph.graph.message import add_messages
 
 
 class AgentState(TypedDict, total=False):
-    """Shared scratchpad for one turn of the ReAct loop (agent <-> tools).
-
-    Not cross-turn persisted: `agent.context.build_context` rebuilds
-    `conversation_history`/`memory_context` from SQLite at the start of every
-    turn; `messages` here is only this turn's tool-calling trajectory.
-    """
+    """Shared scratchpad state for one turn of the ReAct agent loop."""
 
     # 1. Request & Context (assembled by agent.runtime / agent.context before the graph runs)
     client_id: str

@@ -1,17 +1,4 @@
-"""LangGraph ReAct Agent Core: agent <-> tools loop (Agentic CRAG Architecture).
-
-No router node, no fixed retrieval pipeline node: `agent_node` calls the LLM
-with the two registered tools (`crag_search`, `controlled_web_search`) bound;
-`tool_node` dispatches whatever the model asked for via the Tool Registry and
-feeds results back; the loop repeats until the model answers without calling
-a tool (or the iteration cap forces it to). This mirrors Hermes Agent's core
-loop (CONTRIBUTING.md): call LLM -> if tool_calls, dispatch + append results
--> loop back to LLM.
-
-No checkpointer either: cross-turn continuity is the Context Manager's job
-(agent/context.py, backed by the durable `messages`/`memories` SQLite tables).
-Each `invoke()` is a self-contained turn; `agent.runtime` assembles its input.
-"""
+"""LangGraph ReAct agent core loop for the Legal CRAG assistant."""
 from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
@@ -40,8 +27,7 @@ def build_crag_graph():
     return g.compile()
 
 
-# Lazy singleton instance (the graph is stateless across turns, so one compiled
-# instance is safely shared by every request).
+# Lazy singleton instance for compiled graph.
 _COMPILED_GRAPH = None
 
 

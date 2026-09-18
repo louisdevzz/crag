@@ -1,15 +1,4 @@
-"""Follow-up Question Generation: a small, isolated LLM call that reads the
-answer just produced and suggests what the user would plausibly ask next.
-
-Deliberately NOT part of the main answer generation prompt: the main answer
-must stay unconstrained natural prose (see `agent/prompts.py`), so forcing it
-to also emit a structured `follow_up_questions` field would reintroduce the
-JSON-formatting pressure that fight against natural tone. This mirrors how
-ChatGPT/Perplexity implement "related questions" — a separate, cheap
-completion grounded on the actual exchange, not a hardcoded template keyed on
-keywords in the question (the previous frontend implementation, which the
-user correctly flagged as fake).
-"""
+"""Generate follow-up question suggestions grounded in the turn answer."""
 from __future__ import annotations
 
 import json
@@ -49,10 +38,7 @@ def _extract_json_array(text: str) -> List[str]:
 
 
 def generate_follow_ups(query: str, answer: str) -> List[str]:
-    """Return up to `MAX_FOLLOW_UPS` follow-up questions grounded in `answer`,
-    or `[]` on any failure (no LLM available, malformed output, chit-chat
-    turns with nothing to follow up on) — this is a UX nicety, never allowed
-    to fail the turn."""
+    """Generate up to MAX_FOLLOW_UPS context-grounded follow-up questions."""
     if not answer or not answer.strip():
         return []
 

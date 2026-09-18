@@ -1,11 +1,4 @@
-"""LangGraph Node Implementations for the Legal CRAG ReAct Agent.
-
-Agent Core is a genuine ReAct tool-calling loop (mirrors Hermes Agent's core
-loop: call LLM -> if tool_calls, dispatch via registry, feed results back,
-loop -> else the response is the final answer) — there is no separate router
-node or fixed retrieval pipeline node; `crag_search` and `controlled_web_search`
-are the only two things the model can call, and it decides for itself.
-"""
+"""LangGraph node implementations for the Legal CRAG ReAct agent."""
 from __future__ import annotations
 
 import json
@@ -64,14 +57,7 @@ _EVIDENCE_GAP_NUDGE_PREFIX = "[Ghi chú nội bộ] "
 
 
 def _evidence_gap_nudge(state: AgentState) -> Optional[str]:
-    """Describe, in plain language, that the internal evidence still looks weak —
-    never which tool to call next or with what argument. The model reads this
-    exactly like any other tool result and decides for itself whether and how to
-    search further; naming the fix here would turn tool selection into an if/else
-    in the harness instead of a model decision. The signal itself
-    (`crag_action`) comes from the cross-encoder reranker's calibrated score
-    thresholds (`retrieval.reranker.decide_crag_action`), not from keyword
-    matching — this function adds no domain-specific heuristics of its own."""
+    """Generate an internal guidance nudge when retrieved evidence remains weak."""
     tool_trace = state.get("tool_trace") or []
     crag_calls = [t for t in tool_trace if t.get("tool") == "crag_search"]
     if not crag_calls:
@@ -93,12 +79,7 @@ _LEAKED_PARAM_RE = re.compile(r"<parameter=([\w.\-]+)>([\s\S]*?)</parameter>", r
 
 
 def _extract_leaked_tool_calls(content: Any) -> Optional[List[Dict[str, Any]]]:
-    """Some tool-calling-tuned open models (Qwen/Hermes chat template) occasionally leak their
-    tool-call intent as `<tool_call><function=name><parameter=k>v</parameter></function></tool_call>`
-    text in `content` instead of populating the API's structured `tool_calls` field. Parse that
-    format back into normal `AIMessage.tool_calls` shape so the rest of the loop is unaffected —
-    Hermes Agent's own bridge (`acp_openai_bridge.py::extract_tool_calls_from_text`) handles the
-    same class of provider quirk the same way."""
+    """Extract raw tool-call tags from message text if emitted as inline markup."""
     text = content if isinstance(content, str) else str(content or "")
     if "<function=" not in text:
         return None
@@ -110,9 +91,7 @@ def _extract_leaked_tool_calls(content: Any) -> Optional[List[Dict[str, Any]]]:
 
 
 def _normalize_claims(claims: Any) -> List[Dict[str, Any]]:
-    """Defensively coerce whatever shape the model produced for `claims` into the
-    `{"text": str, "source_ids": [str]}` contract `legal.citations.validate_citations` expects —
-    a model occasionally emits a bare list of strings instead of claim objects."""
+    """Normalize claims list into expected dictionary structures with source IDs."""
     if not isinstance(claims, list):
         return []
     normalized: List[Dict[str, Any]] = []
@@ -125,8 +104,7 @@ def _normalize_claims(claims: Any) -> List[Dict[str, Any]]:
 
 
 def _parse_generation_flexible(content: Any, evidence: List[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Flexible parse: handles both JSON format and natural Markdown prose,
-    extracting claims, citations, and abstain status seamlessly."""
+    """Parse generation content flexibly, supporting both JSON and Markdown prose."""
     text = content if isinstance(content, str) else str(content or "")
     evidence = evidence or []
 
@@ -440,9 +418,7 @@ def validate_citations_node(state: AgentState) -> Dict[str, Any]:
 
 
 def derive_route_and_action(tool_trace: List[Dict[str, Any]]) -> Tuple[str, str]:
-    """Post-hoc classification of a completed turn for logging/analytics/API compatibility
-    (`route`/`crag_action` are no longer control-flow decisions, just an observability summary
-    of which tool(s) the agent actually chose to call)."""
+    """Derive summary route and CRAG action from completed tool execution trace."""
     crag_calls = [t for t in tool_trace if t.get("tool") == "crag_search" and t.get("success")]
     if crag_calls:
         return "rag", crag_calls[-1].get("crag_action") or "AMBIGUOUS"
