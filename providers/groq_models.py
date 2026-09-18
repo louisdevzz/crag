@@ -1,12 +1,4 @@
-"""Dynamic Groq Model Discovery and Free Model Resolver.
-
-Fetches live available models from Groq API, filters active free-tier models,
-and prioritizes Qwen 3.8 27B (qwen/qwen3.8-27b) as the primary reasoning/coding
-model, per Groq's Free Plan catalog effective 2026-09-11. Older models such as
-llama-3.1-8b-instant, llama-3.3-70b-versatile, qwen-2.5-32b and qwen-qwq-32b
-were deprecated from Groq's free/developer tier in Jul-Aug 2026 and are no
-longer requested.
-"""
+"""Dynamic Groq model discovery and free model resolver."""
 from __future__ import annotations
 
 import logging
@@ -47,20 +39,7 @@ _CACHE_TTL_SECONDS: float = 3600.0  # 1 hour cache
 
 
 def fetch_groq_models(api_key: Optional[str] = None, force_refresh: bool = False) -> List[Dict[str, Any]]:
-    """Fetch the list of available models from Groq API with caching.
-
-    Parameters
-    ----------
-    api_key : str, optional
-        Groq API key (defaults to GROQ_API_KEY environment variable).
-    force_refresh : bool
-        If True, bypasses the in-memory cache.
-
-    Returns
-    -------
-    list of dict
-        Model descriptors including id, active status, context window, and owner.
-    """
+    """Fetch available models from Groq API with in-memory caching."""
     global _CACHED_MODELS, _CACHE_TIMESTAMP
 
     now = time.time()
@@ -115,31 +94,7 @@ def resolve_groq_model(
     preferred_family: str = "qwen",
     api_key: Optional[str] = None,
 ) -> str:
-    """Dynamically resolve and select the best available free model on Groq.
-
-    Priority logic:
-    1. If a specific, non-generic model name is given, use it as-is (unless deprecated,
-       in which case it is remapped to the current primary free model).
-    2. Otherwise, query live Groq models (cached) and rank them by DEFAULT_FREE_MODELS_FALLBACK
-       preference order, so "qwen/qwen3.8-27b" wins over any other Qwen/GPT-OSS variant.
-    3. If live discovery is unavailable (no API key / network), fall back to the static
-       DEFAULT_FREE_MODELS_FALLBACK list, still headed by "qwen/qwen3.8-27b".
-
-    Parameters
-    ----------
-    requested_model : str, optional
-        Explicit model name or auto-selection trigger ('auto', 'free', 'qwen', 'default').
-    preferred_family : str
-        Target model family substring to prioritize when no exact fallback match exists
-        (default: 'qwen').
-    api_key : str, optional
-        Groq API key.
-
-    Returns
-    -------
-    str
-        Resolved model ID ready for inference.
-    """
+    """Dynamically resolve and select the best available model on Groq."""
     req = (requested_model or os.getenv("LLM_MODEL", "")).strip()
 
     is_generic = req.lower() in ("", "auto", "free", "qwen", "default")

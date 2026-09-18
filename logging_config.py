@@ -1,19 +1,4 @@
-"""Structured pipeline logging for the Legal CRAG Assistant.
-
-Every stage of a turn (routing, embedding/retrieval, reranking, CRAG branch
-decision, web search, LLM generation, citation validation) logs a single,
-greppable INFO line prefixed `[CRAG:<stage>]` so it's possible to confirm from
-the server console — not just trust — that each stage genuinely executed
-against a real backend (embedding model, reranker, LLM provider) rather than
-a fallback/mocked path.
-
-`timed_stage` extends this to *how long* each stage/sub-step took (LLM call,
-dense/BM25 retrieval, rerank, ingestion OCR page, embedding batch, ...) — the
-missing piece for diagnosing a slow chat turn or a slow multi-page ingestion
-run straight from the console instead of guessing.
-
-Usage: `from logging_config import get_logger, timed_stage; log = get_logger(__name__)`.
-"""
+"""Structured pipeline logging and timing utilities for the Legal CRAG Assistant."""
 from __future__ import annotations
 
 import logging
@@ -58,11 +43,7 @@ def get_logger(name: str) -> logging.Logger:
 
 @contextmanager
 def timed_stage(log: logging.Logger, label: str, **fields: Any) -> Iterator[None]:
-    """Log `label`'s start immediately, then its wall-clock duration (plus any
-    `key=value` context, e.g. `document=doc_id page=3/45`) on exit — success or
-    exception — so a slow request/ingestion run is diagnosable straight from
-    the console instead of only from an eventual stage-level timestamp.
-    """
+    """Context manager to log the start and wall-clock execution duration of a stage."""
     extra = " ".join(f"{k}={v}" for k, v in fields.items())
     suffix = f" {extra}" if extra else ""
     log.info("[%s] start%s", label, suffix)

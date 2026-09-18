@@ -1,17 +1,4 @@
-"""LangFuse Observability Integration for the Legal CRAG Agent.
-
-A single `langfuse.langchain.CallbackHandler` attached to the LangGraph
-`config["callbacks"]` at the top-level `app.invoke()`/`app.astream()` call is
-enough to trace an entire turn: LangChain propagates the ambient
-`RunnableConfig` (callbacks included) via contextvars into every nested
-`llm.invoke()`/`llm.stream()` call made inside any node function for that
-run, even though individual nodes (router, rewriter, generator, ...) never
-see or forward `config` themselves. No per-node instrumentation needed.
-
-Mirrors the `get_chat_model()` graceful-fallback pattern in `llm.py`: missing
-`LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` disables tracing instead of
-crashing the agent.
-"""
+"""LangFuse observability integration for the Legal CRAG agent."""
 from __future__ import annotations
 
 import os
@@ -52,10 +39,7 @@ def trace_config(
     client_id: Optional[str] = None,
     trace_name: str = "legal-crag-turn",
 ) -> dict:
-    """Build the LangGraph `config` dict for one turn, with LangFuse tracing attached
-    when configured. Always includes the `thread_id` for checkpointer continuity;
-    tracing is a pure add-on that never blocks a turn when disabled/misconfigured.
-    """
+    """Build the LangGraph config dictionary for a turn with LangFuse tracing when configured."""
     config: dict = {"configurable": {"thread_id": thread_id}}
 
     handler = get_langfuse_handler()

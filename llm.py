@@ -1,11 +1,4 @@
-"""Multi-Provider LLM & Embedding Factory for Legal CRAG Agent.
-
-Provides pluggable access to:
-- Groq (ultra-low latency LPU inference)
-- OpenAI (GPT-4o, GPT-4o-mini)
-- OpenRouter (DeepSeek V3/R1, Qwen 2.5 72B, Claude 3.5 Sonnet, etc.)
-- Ollama (local on-premise execution)
-"""
+"""Multi-Provider LLM and Embedding Factory for Legal CRAG Agent."""
 from __future__ import annotations
 
 import os
@@ -32,22 +25,7 @@ def get_chat_model(
     temperature: Optional[float] = None,
     **kwargs,
 ) -> BaseChatModel:
-    """Factory function to initialize a LangChain BaseChatModel based on provider.
-
-    Parameters
-    ----------
-    provider : str, optional
-        "groq" | "openai" | "openrouter" | "ollama" (defaults to LLM_PROVIDER from config)
-    model : str, optional
-        Target model name (defaults to LLM_MODEL from config)
-    temperature : float, optional
-        Sampling temperature (defaults to 0.0 for deterministic legal QA)
-
-    Returns
-    -------
-    BaseChatModel
-        LangChain-compatible chat model instance
-    """
+    """Initialize a LangChain BaseChatModel instance based on the specified provider."""
     p = (provider or CONFIG.llm.provider).lower().strip()
     m = model or CONFIG.llm.model
     t = CONFIG.llm.temperature if temperature is None else temperature
@@ -110,16 +88,7 @@ def get_chat_model_with_fallback(
     temperature: Optional[float] = None,
     **kwargs,
 ) -> BaseChatModel:
-    """Provider Manager: try `CONFIG.llm.provider` first, then each of
-    `CONFIG.llm.fallback_providers` in order, returning the first client that
-    initializes successfully (has credentials and constructs without error).
-
-    This only covers *initialization* failures (missing API key, import error,
-    unknown provider) — a provider that initializes but fails mid-request still
-    falls back to the deterministic evidence-synthesis path in `agent/nodes.py`,
-    not to a different provider, since retrying a different provider mid-stream
-    would require re-issuing the whole request.
-    """
+    """Initialize a chat model, trying the primary provider first then configured fallbacks."""
     tried = []
     candidates = [CONFIG.llm.provider] + [p for p in CONFIG.llm.fallback_providers if p != CONFIG.llm.provider]
     for provider in candidates:
@@ -137,14 +106,7 @@ _EMBEDDINGS_LOCK = threading.Lock()
 
 
 def get_embeddings(provider: Optional[str] = None, model: Optional[str] = None):
-    """Cached factory for real text embedding models — the underlying client (e.g.
-    HuggingFaceEmbeddings, which loads a multi-hundred-MB transformer from disk into
-    memory) is expensive to construct, so every (provider, model) pair is built at
-    most once per process and reused across every `crag_search` call and ingestion
-    run, mirroring `retrieval.reranker`'s singleton pattern. Thread-safe: FastAPI runs
-    sync request handlers in a threadpool, so concurrent first requests could
-    otherwise race to construct (and load) the model twice.
-    """
+    """Cached singleton factory for text embedding model instances."""
     p = (provider or os.getenv("EMBEDDING_PROVIDER") or EMBEDDING_PROVIDER).lower().strip()
     m = model or os.getenv("EMBEDDING_MODEL") or EMBEDDING_MODEL
     key = (p, m)
@@ -161,7 +123,7 @@ def get_embeddings(provider: Optional[str] = None, model: Optional[str] = None):
 
 
 def _build_embeddings(p: str, m: str):
-    """One-time construction of the embedding client for `(p, m)`; see `get_embeddings`."""
+    """Construct an embedding client for the specified provider and model."""
     if p in ("huggingface", "sentence-transformers"):
         try:
             from langchain_community.embeddings import HuggingFaceEmbeddings
