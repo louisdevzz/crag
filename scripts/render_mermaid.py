@@ -1,8 +1,4 @@
-"""Mermaid Chart Renderer for Documentation (PNG & SVG).
-
-Converts Mermaid diagram code into styled image files (PNG/SVG)
-for embedding directly into Markdown reports and documentation.
-"""
+"""Mermaid chart renderer for PNG and SVG documentation diagrams."""
 from __future__ import annotations
 
 import argparse

@@ -1,15 +1,4 @@
-"""Session, Message and Semantic Memory Store — the single source of truth the
-Agent Runtime's Context Manager reads from and writes to every turn.
-
-Three tables (see schema.sql):
-- `sessions`    — one row per chat thread, owned by a `clients` row.
-- `messages`    — canonical short-term conversational history (user + assistant
-                  rows per turn). Read back by `agent.context.build_context` so
-                  follow-up questions actually see prior turns.
-- `memories`    — long-term semantic profile, strictly governed by the
-                  `ALLOWED_MEMORY_KEYS` allow-list. Never legal grounding, only
-                  entity resolution (e.g. "công ty tôi" -> business_type/province).
-"""
+"""Session, message, and semantic memory store using SQLite."""
 from __future__ import annotations
 
 import json
@@ -92,9 +81,7 @@ class MemoryStore:
         return sid
 
     def delete_session(self, client_id: str, session_id: str) -> bool:
-        """Delete one conversation thread, scoped to its owning client so a client
-        can never delete another client's session. `messages` cascade via the FK
-        (`ON DELETE CASCADE` in schema.sql)."""
+        """Delete one conversation session scoped to its owning client."""
         with get_connection(self.db_path) as con:
             cur = con.cursor()
             cur.execute("DELETE FROM sessions WHERE id = ? AND client_id = ?", (session_id, client_id))
@@ -102,8 +89,7 @@ class MemoryStore:
             return cur.rowcount > 0
 
     def clear_history(self, client_id: str) -> int:
-        """Delete every session (and cascade every message) owned by a client.
-        Returns the number of sessions deleted."""
+        """Delete all sessions and cascaded messages owned by a client."""
         with get_connection(self.db_path) as con:
             cur = con.cursor()
             cur.execute("DELETE FROM sessions WHERE client_id = ?", (client_id,))
@@ -249,11 +235,7 @@ class MemoryStore:
             return cur.rowcount
 
     def format_memory_context(self, client_id: str) -> str:
-        """Format semantic memories into a non-legal context string for entity resolution.
-
-        Guardrail: this text is labelled explicitly (in every prompt that consumes it)
-        as background only, never as legal grounding — see agent/nodes.py.
-        """
+        """Format semantic memories into a context string for entity resolution."""
         memories = self.get_client_memories(client_id)
         if not memories:
             return ""

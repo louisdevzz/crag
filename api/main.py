@@ -36,12 +36,7 @@ log = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan handler: ensure system directories/database exist, then warm the
-    embedding model, reranker, and Chroma vectorstore singletons (retrieval.dense,
-    retrieval.reranker, llm.get_embeddings) once at boot — each is expensive to
-    construct (loads a transformer model from disk) but cached for the life of the
-    process, so paying that cost here means every `crag_search` call and document
-    upload afterward is fast instead of the first one after each cold start."""
+    """FastAPI lifespan handler: initialize system database and warm up singletons."""
     try:
         from scripts.init_system import init_system
         init_system(quiet=True)
@@ -192,19 +187,7 @@ def _sse(event: Dict[str, Any]) -> str:
 
 @app.post("/api/chat/stream")
 async def chat_stream_endpoint(req: ChatRequest) -> StreamingResponse:
-    """Execute Legal CRAG Agent turn with live SSE streaming.
-
-    Emits, in order:
-    - `{"type": "node", "node": ..., "stage": 0-3}` as each LangGraph node
-      actually completes (real pipeline progress, not a client-side timer).
-    - `{"type": "token", "text": ...}` deltas of the generated answer text,
-      decoded live from the `generate` node's structured JSON output via
-      `AnswerFieldExtractor` (deterministic routes like `database` emit no
-      token events — their answer arrives whole in the final `done` event).
-    - `{"type": "done", "payload": {...}}` once with the same shape as
-      `POST /api/chat`'s response body.
-    - `{"type": "error", "message": ...}` if the agent run raises.
-    """
+    """Execute Legal CRAG Agent turn with live SSE streaming."""
     log.info("=== [TURN START] (streaming) query=%r client_id=%s ===", req.query[:100], req.client_id)
 
     client_id, session_id, state_input = prepare_turn(req.client_id, req.session_id, req.query, req.as_of_date)
@@ -212,11 +195,6 @@ async def chat_stream_endpoint(req: ChatRequest) -> StreamingResponse:
     config = trace_config(thread_id=session_id, client_id=client_id)
 
     async def event_stream() -> AsyncIterator[str]:
-        # Manual reducer accumulation: `stream_mode="updates"` yields each node's raw
-        # partial-update dict, not the graph's already-merged state (that view only exists
-        # via "values" mode or a final `.invoke()` return) — so `evidence`/`tool_trace`
-        # (both `operator.add` reducers on AgentState) must be accumulated here the same way
-        # LangGraph would internally, and `generation`/`citation_report` simply overwrite.
         evidence: List[Dict[str, Any]] = []
         tool_trace: List[Dict[str, Any]] = []
         generation: Dict[str, Any] = {}
@@ -466,10 +444,7 @@ class DeleteResult(BaseModel):
 
 
 def _with_stage(doc: Dict[str, Any]) -> Dict[str, Any]:
-    """Attach the live `stage`/`detail`/progress counters from the document's
-    latest ingestion job — the Admin documents table's at-a-glance one-liner
-    (e.g. "OCR trang 12/45") without a client round trip to the detail
-    endpoint for every row."""
+    """Attach current ingestion stage and progress details to a document summary."""
     job = jobs_repo.get_job_for_document(doc["id"])
     doc = dict(doc)
     is_processing = doc["status"] == "PROCESSING"
@@ -520,8 +495,7 @@ def admin_stats() -> Dict[str, Any]:
 
 
 def _delete_document_fully(document_id: str) -> Dict[str, Any]:
-    """Cascade-delete a document: SQLite row (+ its chunks/jobs via FK), its Chroma
-    vectors, and rebuild the BM25 index so it never lingers in either index."""
+    """Cascade-delete a document from SQLite and Chroma, then rebuild the BM25 index."""
     indexer.remove_document_from_chroma(document_id)
     doc = documents_repo.delete_document(document_id)
     corpus_total = indexer.rebuild_bm25_index()
@@ -534,11 +508,7 @@ def _delete_document_fully(document_id: str) -> Dict[str, Any]:
 
 
 class _UploadRejected(Exception):
-    """A single file's upload was rejected — bad extension, empty content, or an
-    unreplaced duplicate. Carries the same (status_code, detail) an HTTPException
-    would; the single-file endpoint raises it as one, the batch endpoint instead
-    records it as that file's per-item result so one bad file in a folder never
-    aborts the rest of the batch."""
+    """Exception raised when an uploaded file fails validation or duplication checks."""
     def __init__(self, status_code: int, detail: str):
         super().__init__(detail)
         self.status_code = status_code
@@ -546,9 +516,7 @@ class _UploadRejected(Exception):
 
 
 def _accept_upload(filename: str, content: bytes, replace: bool) -> Dict[str, Any]:
-    """Validate + persist one uploaded file as a new `documents` row + ingestion
-    job (not yet submitted to the worker — the caller decides single vs. batch
-    submission). Shared by the single-file and folder/batch upload endpoints."""
+    """Validate and persist one uploaded file as a document row and ingestion job."""
     ext = Path(filename or "").suffix.lower()
     if ext not in ALLOWED_UPLOAD_EXTENSIONS:
         raise _UploadRejected(400, f"Định dạng không hỗ trợ '{ext}'. Cho phép: {sorted(ALLOWED_UPLOAD_EXTENSIONS)}")
@@ -585,8 +553,7 @@ def _accept_upload(filename: str, content: bytes, replace: bool) -> Dict[str, An
 
 @app.post("/api/admin/documents/upload", response_model=UploadResult)
 async def admin_upload_document(file: UploadFile = File(...), replace: bool = False) -> Dict[str, Any]:
-    """Upload a legal document; ingestion runs asynchronously on a background worker
-    (see `ingestion.pipeline`). Poll `GET /api/admin/documents/{id}` for live progress."""
+    """Upload a single legal document and trigger background ingestion."""
     content = await file.read()
     try:
         result = _accept_upload(file.filename or "", content, replace)
@@ -599,15 +566,7 @@ async def admin_upload_document(file: UploadFile = File(...), replace: bool = Fa
 
 @app.post("/api/admin/documents/upload-batch", response_model=BatchUploadResult)
 async def admin_upload_batch(files: List[UploadFile] = File(...), replace: bool = False) -> Dict[str, Any]:
-    """Upload a folder / multiple legal documents at once — the Admin frontend's
-    folder picker (`webkitdirectory`) posts every file it collected here in one
-    request. Every accepted file ingests concurrently across the shared worker
-    pool (`INGESTION_WORKERS`); a bad file (wrong extension, empty, duplicate
-    without `replace=true`) is recorded as that file's own `SKIPPED`/`ERROR`
-    result instead of aborting the rest of the batch. The corpus-wide BM25 index
-    is rebuilt exactly once after every accepted file finishes, not once per
-    file (see `ingestion.worker.submit_batch_ingestion`). Poll
-    `GET /api/admin/documents` for live per-file progress."""
+    """Upload a batch of legal documents and trigger concurrent background ingestion."""
     results: List[Dict[str, Any]] = []
     accepted_ids: List[str] = []
 

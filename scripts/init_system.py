@@ -1,19 +1,4 @@
-"""System Initialization and Environment Diagnostic Script for Legal CRAG Assistant.
-
-Prepares:
-1. System directory hierarchy (~/.crag/ or $CRAG_HOME)
-   - ~/.crag/database/
-   - ~/.crag/chroma/
-   - ~/.crag/logs/
-2. SQLite Database (~/.crag/app.db or $DB_PATH)
-   - Executes schema.sql with 8 relational tables and indexes
-   - Enables PRAGMA foreign_keys and WAL mode
-   - Safely migrates existing legacy app.db from project root if present
-3. Vector Store & Index Directories (~/.crag/chroma)
-4. Environment & Pre-flight Diagnostics
-   - Validates .env configuration and API keys
-   - Checks LLM, Embedding, and Reranker model readiness
-"""
+"""System initialization and environment diagnostic script for the Legal CRAG Assistant."""
 from __future__ import annotations
 
 import argparse

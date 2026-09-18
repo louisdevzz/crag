@@ -1,10 +1,4 @@
-"""Model Downloader & Verification Script for Legal CRAG Assistant.
-
-Pre-downloads and verifies:
-1. Embedding Model (Default: BAAI/bge-m3 via Hugging Face Hub)
-2. Reranker Model (Default: BAAI/bge-reranker-v2-m3 via Hugging Face Hub)
-3. Optional Ollama models if Ollama provider is selected.
-"""
+"""Model downloader and verification script for the Legal CRAG assistant."""
 from __future__ import annotations
 
 import argparse

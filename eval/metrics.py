@@ -34,12 +34,7 @@ def compute_mrr(retrieved_ids: List[str], expected_ids: List[str]) -> float:
 
 
 def compute_fallback_metrics(eval_records: List[Dict[str, Any]]) -> Dict[str, float]:
-    """Compute Fallback Precision, Fallback Recall, and False Fallback Rate (Formulas 4.1, 4.2, 4.3).
-
-    - Fallback Precision = True Fallback / Total Fallback Triggered
-    - Fallback Recall = True Fallback / Total Out-of-corpus Queries
-    - False Fallback Rate = In-corpus wrongly triggered / Total In-corpus Queries
-    """
+    """Compute Fallback Precision, Fallback Recall, and False Fallback Rate metrics."""
     total_fallback_triggered = 0
     true_fallback = 0
     total_out_of_corpus = 0
@@ -148,18 +143,7 @@ def compute_temporal_correctness(eval_records: List[Dict[str, Any]]) -> float:
 
 
 def _patch_ragas_vertexai_shim() -> None:
-    """Work around a broken transitive import in `ragas` (as of 0.4.3).
-
-    `ragas.llms.base` unconditionally imports
-    `langchain_community.chat_models.vertexai.ChatVertexAI`, a shim module that
-    was removed from `langchain-community` >=0.4 (the Vertex AI integration
-    moved to the standalone `langchain-google-vertexai` package). Pulling in
-    that whole Google Cloud SDK just to satisfy one dead import is not
-    reasonable for an on-premise Vietnamese legal assistant. The class is only
-    ever used in a static `isinstance()` allow-list
-    (`MULTIPLE_COMPLETION_SUPPORTED`) inside ragas — never instantiated — so a
-    harmless placeholder class is a safe, fully contained substitute.
-    """
+    """Patch missing ChatVertexAI import shim in ragas without extra dependencies."""
     module_name = "langchain_community.chat_models.vertexai"
     if module_name in sys.modules:
         return
@@ -179,16 +163,7 @@ def _patch_ragas_vertexai_shim() -> None:
 
 
 def compute_ragas_metrics(eval_records: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Compute real RAGAS Faithfulness, Answer Relevancy, Context Precision, and
-    Context Recall (Es et al., 2023 — https://arxiv.org/abs/2309.15217) via the
-    `ragas` package, using the project's configured chat model and embeddings.
-
-    Each `eval_records` entry needs `question`, `answer`, `contexts` (list of
-    retrieved evidence text strings), and `ground_truth` populated. Records
-    missing any of these (abstained turns, pure `general`/`database` routes
-    with no retrieval) are skipped — RAGAS's metrics are undefined without a
-    retrieved context and a reference answer to compare against.
-    """
+    """Compute RAGAS metrics (Faithfulness, Answer Relevancy, Context Precision, Context Recall)."""
     empty: Dict[str, Any] = {
         "faithfulness": 0.0,
         "answer_relevancy": 0.0,

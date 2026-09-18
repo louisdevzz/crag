@@ -1,9 +1,4 @@
-"""Schema-Driven Dynamic Semantic Memory Extractor.
-
-Modeled after Hermes Agent memory wiki and OpenClaw dynamic entity extraction.
-Eliminates brittle hardcoded lists of provinces and industries in favor of
-schema-driven semantic extraction with grammar-based generalized pattern fallback.
-"""
+"""Schema-driven dynamic semantic memory extractor."""
 from __future__ import annotations
 
 import json
