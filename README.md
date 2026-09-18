@@ -15,129 +15,57 @@
 Legal CRAG Assistant được xây dựng theo kiến trúc **ReAct Agent + Corrective RAG (CRAG)**.
 
 Không có Router phân loại câu hỏi trước khi vào Agent. Thay vào đó, LLM tự quyết định khi nào cần:
-
-- tra cứu Knowledge Base nội bộ bằng `crag_search`;
-- tìm kiếm nguồn pháp luật ngoài hệ thống bằng `controlled_web_search`;
-- hoặc trả lời trực tiếp khi không cần tool.
+* Tra cứu Knowledge Base nội bộ bằng `crag_search`;
+* Tìm kiếm nguồn pháp luật ngoài hệ thống bằng `controlled_web_search`;
+* Trả lời trực tiếp khi không cần gọi công cụ.
 
 Các câu trả lời pháp lý được kiểm tra lại bằng **Deterministic Citation Validator** trước khi trả về cho người dùng.
 
-![Legal CRAG Workflow](docs/images/workflow.png)
+## System Architecture
+
+### 1. Kiến trúc Tổng thể Hệ thống (Chat + Admin + Shared Layer)
+
+![Agentic CRAG Architecture](docs/images/agent-crag-architecture.png)
+
+### 2. Luồng Hoạt động Chi tiết Toàn diện (End-to-End Workflow)
+
+![Legal CRAG Detailed Workflow](docs/images/workflow.png)
 
 ## Key Features
 
-- **Agentic ReAct Loop** với LangGraph: `agent ⇄ tools`.
-- **Corrective RAG 3 trạng thái**: `CORRECT`, `AMBIGUOUS`, `INCORRECT`.
-- **Hybrid Retrieval**: Dense Retrieval với Chroma + Lexical Retrieval với BM25.
-- **Reciprocal Rank Fusion (RRF)** và Cross-Encoder Reranking.
-- **Controlled Web Search** giới hạn nguồn pháp luật theo allow-list.
-- **Citation Validation** kiểm tra `source_id` và hiệu lực theo `as_of_date`.
-- **Session History** lưu bền vững trong SQLite.
-- **Long-term Memory** cho hồ sơ ngữ nghĩa người dùng, tách biệt khỏi legal evidence.
-- **Admin Ingestion Pipeline** cho PDF, DOCX, DOC, TXT và Markdown.
-- **OCR cho PDF scan**, Text Cleaning và Legal Structure Parsing.
-- **Background ingestion worker** với tiến trình theo từng stage.
-- **Multi-provider LLM**: Groq, OpenAI, OpenRouter và Ollama.
-- **SSE Streaming** cho Chat UI.
-- **LangFuse observability** tùy chọn.
-
-## Architecture
-
-### Chat Workflow
-
-```text
-User
- ↓
-Agent Runtime
- ↓
-Context Manager
- ↓
-Agent Core
- ↓
-ReAct Loop
- ├── crag_search
- │     ↓
- │  Chroma + BM25
- │     ↓
- │    RRF
- │     ↓
- │  Reranker
- │     ↓
- │ CRAG Evaluate
- │
- └── controlled_web_search
-       ↓
-   External Evidence
-       ↓
-Agent
- ↓
-Citation Validator
- ↓
-Response
-```
-
-### Admin Workflow
-
-```text
-Upload
-  ↓
-Background Worker
-  ↓
-Parse / OCR
-  ↓
-Cleaning
-  ↓
-Structuring
-  ↓
-Chunking
-  ↓
-Embedding
-  ↓
-Chroma + BM25
-  ↓
-READY
-```
-
-### Shared Data Layer
-
-```text
-SQLite
-├── documents
-├── document_chunks
-├── ingestion_jobs
-├── legal_relations
-├── clients
-├── sessions
-├── messages
-└── memories
-
-Chroma
-└── Dense vector index
-
-BM25
-└── Lexical index
-```
-
-> **SQLite là source of truth.** Chroma và BM25 là retrieval indexes có thể rebuild từ các chunk canonical trong SQLite.
+* **Agentic ReAct Loop** với LangGraph: `agent ⇄ tools`.
+* **Corrective RAG 3 trạng thái**: `CORRECT`, `AMBIGUOUS`, `INCORRECT`.
+* **Hybrid Retrieval**: Dense Retrieval với Chroma (BGE-M3 1024 chiều) + Lexical Retrieval với BM25.
+* **Reciprocal Rank Fusion (RRF)** ($k=60$) và Cross-Encoder Sigmoid Reranking.
+* **Controlled Web Search** giới hạn nguồn pháp luật theo tên miền nhà nước (`vbpl.vn`, `chinhphu.vn`...).
+* **Citation Validation** kiểm tra `source_id` và hiệu lực theo `as_of_date`.
+* **Session History** lưu bền vững trong SQLite.
+* **Long-term Memory** cho hồ sơ ngữ nghĩa người dùng, tách biệt khỏi legal evidence.
+* **Admin Ingestion Pipeline** cho PDF, DOCX, DOC, TXT và Markdown.
+* **OCR cho PDF scan** qua Vision LLM đa luồng (`OCR_CONCURRENCY = 4`), Text Cleaning và Legal Structure Parsing.
+* **Background Ingestion Worker** với tiến trình thời gian thực.
+* **Multi-provider LLM**: Groq, OpenAI, OpenRouter và Ollama.
+* **SSE Streaming** cho Chat UI.
+* **LangFuse Observability** tích hợp giám sát vết.
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Backend | Python 3.13 |
-| API | FastAPI + Uvicorn |
-| Agent Orchestration | LangGraph |
-| LLM Interface | LangChain |
-| Relational Storage | SQLite |
-| Vector Store | ChromaDB |
-| Lexical Retrieval | rank-bm25 |
-| Embedding | BAAI/bge-m3 |
-| Reranker | BAAI/bge-reranker-v2-m3 |
-| Frontend | Next.js 14 + React 18 + TypeScript |
-| Styling | Tailwind CSS |
-| Package Manager | uv + pnpm 11.18.0 |
-| Observability | LangFuse |
-| Local LLM | Ollama |
+| Phân hệ | Công nghệ |
+| :--- | :--- |
+| **Ngôn ngữ Nền tảng** | Python 3.13 |
+| **API Gateway** | FastAPI + Uvicorn |
+| **Điều phối Tác tử** | LangGraph |
+| **Khung Tác tử** | LangChain Core |
+| **Cơ sở Dữ liệu Quan hệ** | SQLite (Source of Truth) |
+| **Vector Database** | ChromaDB |
+| **Lexical Search** | rank-bm25 (BM25Okapi) |
+| **Mô hình Embedding** | BAAI/bge-m3 (1024 chiều) |
+| **Mô hình Reranker** | BAAI/bge-reranker-v2-m3 (Cross-Encoder Sigmoid) |
+| **Giao diện Người dùng** | Next.js 14 + React 18 + TypeScript |
+| **Styling** | Tailwind CSS |
+| **Quản lý Gói** | uv (Python) + pnpm 11.18.0 (Node.js) |
+| **Giám sát Thực thi** | LangFuse |
+| **Mô hình Local On-premise** | Ollama |
 
 ## Project Structure
 
@@ -167,14 +95,15 @@ crag/
 ├── api/
 │   └── main.py             # FastAPI Gateway
 ├── frontend/               # Next.js Chat + Admin UI
-├── eval/                   # Evaluation / benchmark
+├── eval/                   # Evaluation & Benchmark (RAGAS, Baselines S0-S4)
 ├── scripts/
-├── docs/
-│   ├── INSTALL.md
-│   ├── SETUP_AND_RUN.md
-│   ├── WORKFLOW.md
-│   ├── KNOWLEDGE_BASE.md
-│   └── TECHNICAL.md
+│   ├── ingest_folder.py    # Script nạp tài liệu từ thư mục
+│   ├── init_system.py      # Khởi tạo database và kiểm tra môi trường
+│   ├── pull_models.py      # Tải trước trọng số mô hình
+│   └── render_mermaid.py   # Kết xuất sơ đồ Mermaid ra PNG/SVG
+├── data/
+│   └── raw/                # Kho dữ liệu văn bản pháp quy gốc (505 tệp)
+├── docs/                   # Tài liệu đặc tả kỹ thuật và kiến trúc
 ├── config.py
 ├── llm.py
 ├── schema.sql
@@ -184,317 +113,47 @@ crag/
 └── README.md
 ```
 
-## Quick Start
-
-### 1. Clone repository
-
-```bash
-git clone https://github.com/louisdevzz/crag.git
-cd crag
-```
-
-### 2. Install backend dependencies
-
-Project được chuẩn hóa với **Python 3.13**:
-
-```bash
-uv sync --python 3.13 --frozen
-```
-
-Kiểm tra:
-
-```bash
-uv run python --version
-```
-
-### 3. Install frontend dependencies
-
-```bash
-cd frontend
-pnpm install --frozen-lockfile
-cd ..
-```
-
-### 4. Create environment file
-
-```bash
-cp .env.example .env
-```
-
-Chỉnh `.env` theo provider muốn sử dụng.
-
-Ví dụ với Groq:
-
-```ini
-LLM_PROVIDER=groq
-LLM_MODEL=qwen/qwen3.8-27b
-GROQ_API_KEY=your_key
-```
-
-Ví dụ với Ollama:
-
-```ini
-LLM_PROVIDER=ollama
-LLM_MODEL=<model-name>
-OLLAMA_BASE_URL=http://localhost:11434
-```
-
-### 5. Initialize system
-
-```bash
-uv run python init_system.py
-```
-
-Runtime data mặc định được lưu dưới:
-
-```text
-~/.crag/
-```
-
-bao gồm SQLite database, Chroma index, uploaded files và processed data.
-
-## Run
-
-### Backend
-
-```bash
-uv run uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-Backend:
-
-```text
-http://localhost:8000
-```
-
-Swagger:
-
-```text
-http://localhost:8000/docs
-```
-
-Health check:
-
-```bash
-curl http://localhost:8000/api/health
-```
-
-### Frontend
-
-Terminal khác:
-
-```bash
-cd frontend
-pnpm dev
-```
-
-Mở:
-
-```text
-http://localhost:3000
-```
-
-## Configuration
-
-Các biến môi trường quan trọng:
-
-```ini
-# Chat LLM
-LLM_PROVIDER=groq
-LLM_MODEL=qwen/qwen3.8-27b
-LLM_TEMPERATURE=0.4
-
-# OCR / Vision
-VISION_PROVIDER=groq
-VISION_MODEL=qwen/qwen3.8-27b
-
-# Ingestion
-INGESTION_WORKERS=3
-OCR_CONCURRENCY=4
-
-# Web Search
-TINYFISH_API_KEY=
-
-# Retrieval
-EMBEDDING_MODEL=BAAI/bge-m3
-RERANKER_MODEL=BAAI/bge-reranker-v2-m3
-
-# CRAG Thresholds
-T_LOW=0.35
-T_HIGH=0.70
-INTERNAL_STRIP_MIN=0.40
-
-# Local LLM
-OLLAMA_BASE_URL=http://localhost:11434
-
-# Optional Observability
-LANGFUSE_PUBLIC_KEY=
-LANGFUSE_SECRET_KEY=
-LANGFUSE_BASE_URL=https://cloud.langfuse.com
-```
-
-Xem đầy đủ tại `.env.example`.
-
-## Knowledge Base
-
-Tài liệu được đưa vào hệ thống qua Admin UI hoặc API.
-
-Supported formats:
-
-```text
-.pdf
-.docx
-.doc
-.txt
-.md
-```
-
-Ingestion flow:
-
-```text
-Document
-   ↓
-Parse / OCR
-   ↓
-Text Cleaning
-   ↓
-Legal Structure Parser
-   ↓
-Legal-aware Chunking
-   ↓
-SQLite
-   ↓
-Embedding
-   ↓
-Chroma
-   ↓
-BM25
-   ↓
-READY
-```
-
-Chỉ document có trạng thái `READY` mới được `crag_search` sử dụng.
-
-### Upload một file
-
-```bash
-curl -X POST http://localhost:8000/api/admin/documents/upload \
-  -F "file=@/path/to/document.pdf"
-```
-
-### Upload nhiều file
-
-```bash
-curl -X POST http://localhost:8000/api/admin/documents/upload-batch \
-  -F "files=@/path/to/doc1.pdf" \
-  -F "files=@/path/to/doc2.docx"
-```
-
-## Agent Tools
-
-Agent hiện có đúng hai tool nghiệp vụ:
-
-### `crag_search`
-
-Tra cứu Knowledge Base nội bộ:
-
-```text
-Query
- ↓
-Dense Retrieval + BM25
- ↓
-RRF
- ↓
-Rerank
- ↓
-CRAG Evaluate
- ↓
-Evidence
-```
-
-### `controlled_web_search`
-
-Tra cứu nguồn pháp luật ngoài hệ thống khi evidence nội bộ chưa đủ.
-
-Tool chỉ tìm kiếm trên các domain được cho phép và trả evidence về Agent; tool không tự sinh final answer.
-
-## API
-
-Một số endpoint chính:
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/health` | Health check |
-| `POST` | `/api/chat` | Chat với Agent |
-| `POST` | `/api/chat/stream` | Chat qua SSE streaming |
-| `GET` | `/api/history/{client_id}` | Conversation history |
-| `GET` | `/api/memory/{client_id}` | Semantic memory |
-| `GET` | `/api/documents` | READY documents |
-| `GET` | `/api/admin/documents` | Admin document list |
-| `GET` | `/api/admin/documents/{id}/chunks` | Chunk preview |
-| `POST` | `/api/admin/documents/upload` | Upload một document |
-| `POST` | `/api/admin/documents/upload-batch` | Upload nhiều document |
-| `DELETE` | `/api/admin/documents/{id}` | Xóa document |
-
-## CLI
-
-Chat trực tiếp:
-
-```bash
-uv run python main.py
-```
-
-Demo:
-
-```bash
-uv run python main.py --demo
-```
-
-Khởi tạo lại system:
-
-```bash
-uv run python main.py --init
-```
-
-## Evaluation
-
-Chạy evaluation:
-
-```bash
-uv run python eval/run_eval.py
-```
-
-Kết quả benchmark phụ thuộc vào corpus, embedding model, reranker, LLM provider và threshold hiện tại, vì vậy không hardcode metric vào README.
-
 ## Documentation
 
-| Document | Nội dung |
-|---|---|
-| [`docs/INSTALL.md`](docs/INSTALL.md) | Cài Git, uv, Python 3.13, NVM, Node.js, pnpm và Ollama |
-| [`docs/SETUP_AND_RUN.md`](docs/SETUP_AND_RUN.md) | Cấu hình và chạy project |
-| [`docs/WORKFLOW.md`](docs/WORKFLOW.md) | Workflow tổng thể Chat + Admin |
-| [`docs/KNOWLEDGE_BASE.md`](docs/KNOWLEDGE_BASE.md) | Document, chunk, vector, Chroma và BM25 |
-| [`docs/TECHNICAL.md`](docs/TECHNICAL.md) | Technical reference cho developer |
-| [`docs/AI_Agent_Corrective_RAG_Memory.pdf`](docs/AI_Agent_Corrective_RAG_Memory.pdf) | Tài liệu tham khảo học thuật của dự án |
+Toàn bộ hướng dẫn chi tiết về cài đặt, cấu hình và kiến trúc được phân tách rõ ràng trong thư mục `docs/`:
 
-## Design Principles
+| Tài liệu | Nội dung chi tiết |
+| :--- | :--- |
+| [`docs/INSTALL.md`](docs/INSTALL.md) | **Hướng dẫn cài đặt công cụ:** Git, uv, Python 3.13, NVM, Node.js, pnpm và Ollama |
+| [`docs/SETUP_AND_RUN.md`](docs/SETUP_AND_RUN.md) | **Hướng dẫn cấu hình & khởi chạy:** Thiết lập `.env`, khởi tạo database, chạy Backend API, Frontend UI và CLI |
+| [`docs/WORKFLOW.md`](docs/WORKFLOW.md) | **Đặc tả luồng hoạt động & kiến trúc:** Chi tiết Chat Workflow, Ingestion Pipeline và Data Models |
+| [`docs/KNOWLEDGE_BASE.md`](docs/KNOWLEDGE_BASE.md) | **Đặc tả kho tri thức:** Cơ chế phân đoạn Legal-aware Chunking, SQLite schema và chỉ mục kép |
+| [`docs/RUBRIC_COMPLIANCE.md`](docs/RUBRIC_COMPLIANCE.md) | **Báo cáo đối soát Rubric:** Bảng đối chiếu chi tiết các tiêu chí chấm điểm của đề bài |
+| [`docs/TECHNICAL.md`](docs/TECHNICAL.md) | **Đặc tả kỹ thuật sâu:** Dành cho developer, mô tả chi tiết interface và giải thuật |
 
-- **No pre-routing:** Agent tự quyết định tool cần gọi.
-- **Capability-level tools:** Agent không thao tác trực tiếp SQLite, Chroma hay BM25.
-- **CRAG returns evidence, not final answers.**
-- **Memory is context, not legal evidence.**
-- **SQLite is the canonical source of truth.**
-- **Only READY documents are retrievable.**
-- **Every legal citation must map to retrieved evidence.**
-- **Multi-turn history is persisted in SQLite, not LangGraph in-memory checkpoints.**
+## CLI & Evaluation
 
-## Repository
+### Giao diện Dòng lệnh (CLI)
+* Chat trực tiếp từ Terminal: `uv run python main.py`
+* Chạy bộ 5 kịch bản thực nghiệm Demo: `uv run python main.py --demo`
+* Nạp toàn bộ tài liệu từ thư mục vào kho tri thức: `uv run python scripts/ingest_folder.py data/raw/` (hoặc `uv run python main.py --ingest-folder data/raw/`)
 
-```text
-https://github.com/louisdevzz/crag
+### Đánh giá Thực nghiệm (Evaluation & RAGAS Benchmark)
+* Đo lường hiệu năng và đối chiếu ma trận các hệ thống Baseline (S0: LLM-only, S1: Traditional RAG, S2: RAG + Always Web, S4: Full CRAG đề xuất):
+```bash
+uv run python eval/run_eval.py --baselines --sample-limit 5
 ```
+* Đo lường các chỉ số RAGAS chuẩn hóa (Faithfulness, Answer Relevancy, Context Precision, Context Recall):
+```bash
+uv run python eval/run_eval.py --test
+```
+* Quét lưới hiệu chuẩn ngưỡng $(T_{low}, T_{high})$:
+```bash
+uv run python eval/run_eval.py --calibration
+```
+* Toàn bộ kết quả thực nghiệm được tự động lưu trữ tại `eval/benchmark_report.json`.
 
----
+## Core Design Principles
 
-For installation details, start with [`docs/INSTALL.md`](docs/INSTALL.md).  
-For architecture and implementation details, see [`docs/TECHNICAL.md`](docs/TECHNICAL.md).
+* **No pre-routing:** Agent tự chủ quyết định việc gọi công cụ thông qua cơ chế Function Calling của LLM.
+* **Capability-level tools:** Agent chỉ tương tác với công cụ nghiệp vụ (`crag_search`, `controlled_web_search`), không thao tác trực tiếp với tầng kỹ thuật SQLite, Chroma hay BM25.
+* **CRAG returns evidence, not final answers:** Công cụ CRAG chỉ cung cấp các mảnh bằng chứng và lời chỉ dẫn (*guidance*), Agent giữ quyền tổng hợp câu trả lời.
+* **Memory is context, not legal evidence:** Semantic Memory chỉ dùng để hiểu ngữ cảnh khách hàng, tuyệt đối không dùng làm căn cứ pháp lý.
+* **SQLite is the canonical source of truth:** Toàn bộ văn bản và đoạn trích lưu trữ gốc tại SQLite; ChromaDB và BM25 đóng vai trò chỉ mục tìm kiếm có thể tái tạo bất kỳ lúc nào.
+* **Only READY documents are retrievable:** Chỉ tài liệu đã nạp thành công mới được đưa vào không gian tìm kiếm.
+* **Zero citation hallucination:** Mọi mệnh đề kết luận pháp lý bắt buộc phải có trích dẫn nguồn kiểm chứng được và còn hiệu lực tại ngày tham chiếu `as_of_date`.
