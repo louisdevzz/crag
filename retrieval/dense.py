@@ -18,11 +18,7 @@ _VECTORSTORE_LOCK = threading.Lock()
 
 
 def get_vectorstore(chroma_dir: Path | str = CHROMA_DIR) -> Chroma:
-    """Cached Chroma collection handle — constructing `Chroma(...)` re-opens the
-    persistent client and re-resolves the embedding function, so every distinct
-    `chroma_dir` is opened at most once per process and shared by every
-    `dense_retrieve` call and the ingestion indexer (same process, `ThreadPoolExecutor`
-    background workers), keeping reads consistent with writes."""
+    """Get or initialize cached Chroma vectorstore instance for the directory."""
     key = str(chroma_dir)
     cached = _VECTORSTORE_CACHE.get(key)
     if cached is not None:
@@ -45,20 +41,7 @@ def dense_retrieve(
     top_k: int = TOP_K_DENSE,
     chroma_dir: Path | str = CHROMA_DIR,
 ) -> List[Dict[str, Any]]:
-    """Retrieve top-K candidates using dense semantic similarity in ChromaDB.
-
-    Parameters
-    ----------
-    query : str
-        User search query.
-    top_k : int
-        Number of candidate documents to retrieve (default: 20).
-
-    Returns
-    -------
-    list of dict
-        Candidate records with evidence_id, text, metadata, and similarity score.
-    """
+    """Retrieve top-K candidates using dense semantic similarity in ChromaDB."""
     vectorstore = get_vectorstore(chroma_dir)
     with timed_stage(log, "RETRIEVE:DENSE:CHROMA_QUERY", top_k=top_k):
         results_with_scores = vectorstore.similarity_search_with_relevance_scores(query, k=top_k)

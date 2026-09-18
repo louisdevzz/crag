@@ -35,12 +35,7 @@ def refine_internal(
     min_score: float = INTERNAL_STRIP_MIN,
     max_strips: int = 8,
 ) -> List[Dict[str, Any]]:
-    """Decompose candidate passages into atomic legal strips, rerank, and filter out noise.
-
-    Principle (Listing 3.12):
-    Never feed long raw passages to Generator. Break into clauses/points,
-    rescore relevance, and keep only strips above INTERNAL_STRIP_MIN.
-    """
+    """Decompose candidate passages into atomic legal strips, rerank, and filter out noise."""
     strips: List[Dict[str, Any]] = []
     for doc in candidates:
         parent_id = doc.get("evidence_id") or doc.get("locator") or "DOC"
@@ -97,13 +92,7 @@ def merge_evidence(
     external: List[Dict[str, Any]],
     max_items: int = 10,
 ) -> List[Dict[str, Any]]:
-    """Merge internal and external evidence with priority ranking (Listing 3.12).
-
-    Priority:
-    1. Official Internal Legal Corpus (source_priority = 2)
-    2. Controlled External Search (source_priority = 1)
-    3. Tie-breaker: Relevance Score
-    """
+    """Merge internal and external evidence ranked by source priority and relevance score."""
     all_items = internal + external
     unique_items = deduplicate_by_locator(all_items)
 

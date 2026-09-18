@@ -16,13 +16,7 @@ _BM25_CACHE: Optional[Dict[str, Any]] = None
 
 
 def load_bm25_index(index_path: Path | str = PROCESSED_DATA_DIR / "bm25_index.pkl") -> Dict[str, Any]:
-    """Load serialized BM25 index and provision catalog.
-
-    No document has been ingested yet (or the index has not been rebuilt since):
-    degrade to an empty corpus instead of raising, so `crag_search` can still
-    complete and hand off to `controlled_web_search` via a normal AMBIGUOUS/
-    INCORRECT decision rather than crashing the whole tool call.
-    """
+    """Load serialized BM25 index and provision catalog, returning empty corpus if not found."""
     global _BM25_CACHE
     index_path = Path(index_path)
 
@@ -48,20 +42,7 @@ def bm25_retrieve(
     top_k: int = TOP_K_BM25,
     index_path: Path | str = PROCESSED_DATA_DIR / "bm25_index.pkl",
 ) -> List[Dict[str, Any]]:
-    """Retrieve top-K candidates using exact lexical BM25Okapi scoring.
-
-    Parameters
-    ----------
-    query : str
-        User search query (handles exact document numbers, Article numbers, and terms).
-    top_k : int
-        Number of candidates to retrieve.
-
-    Returns
-    -------
-    list of dict
-        Candidate records with BM25 scores.
-    """
+    """Retrieve top-K candidates using exact lexical BM25Okapi scoring."""
     index_data = load_bm25_index(index_path)
     bm25 = index_data["bm25"]
     chunks = index_data.get("chunks", index_data.get("provisions", []))

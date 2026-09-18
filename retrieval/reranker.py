@@ -132,13 +132,7 @@ def rerank(
     docs: List[Dict[str, Any]],
     top_k: int = TOP_K_RERANK,
 ) -> List[Dict[str, Any]]:
-    """Rerank candidate documents and attach normalized relevance scores.
-
-    Returns
-    -------
-    list of dict
-        Top-K reranked documents with 'score' attribute.
-    """
+    """Rerank candidate documents and attach normalized relevance scores."""
     if not docs:
         return []
 
@@ -155,13 +149,7 @@ def rerank(
 
 
 def decide_crag_action(scores: List[float], t_low: float = T_LOW, t_high: float = T_HIGH) -> str:
-    """Decide CRAG routing action based on calibrated thresholds.
-
-    Rules (Listing 3.11):
-    - best_score >= T_HIGH -> 'CORRECT'
-    - best_score <= T_LOW  -> 'INCORRECT'
-    - otherwise            -> 'AMBIGUOUS'
-    """
+    """Decide CRAG routing action based on calibrated thresholds."""
     best_score = max(scores) if scores else 0.0
     if best_score >= t_high:
         action = "CORRECT"

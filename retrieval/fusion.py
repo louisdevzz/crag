@@ -11,22 +11,7 @@ def rrf_merge(
     k: int = RRF_K,
     top_k: int = 30,
 ) -> List[Dict[str, Any]]:
-    """Merge ranked candidate lists from multiple retrievers using Reciprocal Rank Fusion.
-
-    Parameters
-    ----------
-    result_lists : list of list of dict
-        Ordered candidate lists, e.g. [dense_candidates, bm25_candidates].
-    k : int
-        RRF smoothing constant (default: 60).
-    top_k : int
-        Maximum merged candidates to return.
-
-    Returns
-    -------
-    list of dict
-        Merged candidates sorted by decreasing RRF score.
-    """
+    """Merge ranked candidate lists from multiple retrievers using Reciprocal Rank Fusion."""
     scores: Dict[str, float] = {}
     items: Dict[str, Dict[str, Any]] = {}
     sources: Dict[str, List[str]] = {}
