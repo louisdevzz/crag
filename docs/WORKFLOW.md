@@ -37,7 +37,7 @@ Chịu trách nhiệm tương tác và phản hồi câu hỏi pháp lý của n
 * **Agent Core** vận hành vòng lặp ReAct (Reasoning → Acting → Observing), sử dụng mô hình LLM tự chủ quyết định việc tra cứu.
 * **Citation Validator** kiểm định trích dẫn và hiệu lực văn bản trước khi đưa ra câu trả lời cuối cùng.
 
-Agent Core không sử dụng Router cứng để phân loại câu hỏi trước. Thay vào đó, mô hình ngôn ngữ tự quyết định:
+Agent Core vận hành theo cơ chế tự chủ ra quyết định. Mô hình ngôn ngữ tự đánh giá bối cảnh để:
 * **Trả lời trực tiếp** (với các câu chào hỏi, xã giao hoặc ngữ cảnh đã có sẵn);
 * **Gọi `crag_search`** (tra cứu tri thức pháp luật nội bộ đã lập chỉ mục);
 * **Gọi `controlled_web_search`** (tìm kiếm trên cổng thông tin pháp luật chính thống);

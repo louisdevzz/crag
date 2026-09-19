@@ -67,10 +67,10 @@ Hệ thống triển khai bộ đánh giá tự động trong `eval/run_eval.py`
 
 # 4. Các tính năng nâng cấp vượt trội so với đề bài
 
-Thay vì dừng lại ở một đồ thị xử lý RAG tuần tự cố định, dự án đã được nâng cấp thành một **Hệ thống Tác tử AI Toàn diện (Agentic CRAG Architecture)**:
+Hệ thống được thiết kế theo mô hình **Tác tử AI Tự chủ Toàn diện (Agentic CRAG Architecture)**:
 
 ### 1. Vòng lặp ReAct Tự chủ (Autonomous Tool-Calling Agent)
-Không sử dụng Router cứng để đoán ý định người dùng từ đầu. Mô hình tự suy luận (*Reason*), tự quyết định thời điểm cần gọi `crag_search` hay `controlled_web_search`, hoặc trả lời xã giao trực tiếp khi nhận câu chào hỏi, mang lại trải nghiệm đàm thoại tự nhiên và linh hoạt.
+Mô hình tự chủ suy luận (*Reason*), đánh giá bối cảnh và tự quyết định thời điểm cần gọi `crag_search` hay `controlled_web_search`, hoặc trả lời trực tiếp khi nhận câu chào hỏi, mang lại trải nghiệm đàm thoại tự nhiên và chính xác.
 
 ### 2. Bộ Kiểm định Trích dẫn Xác định (Deterministic Citation Validator)
 Xóa bỏ hoàn toàn ảo giác trích dẫn (*hallucination*). Module độc lập `legal/citations.py` đối chiếu từng mã `[source_id]` trong câu trả lời với kho bằng chứng thực tế, đồng thời kiểm tra tính hiệu lực của văn bản tại mốc thời gian `as_of_date`. Nếu phát hiện suy đoán vô căn cứ, hệ thống tự động thiết lập cờ `abstain = true` để đưa ra câu trả lời an toàn.

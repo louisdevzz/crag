@@ -1,80 +1,138 @@
 % !TEX root = ../main.tex
-\chapter{Kiến trúc Tổng thể và Luồng Hoạt động CRAG}
+\chapter{Kiến trúc tổng thể và luồng hoạt động CRAG}
 
-\section{Kiến trúc 3 Layer Tách Biệt}
+\section{Kiến trúc ba tầng tách biệt}
 
-Kiến trúc phiên bản V3 được chuẩn hóa thành 3 tầng chức năng độc lập, phân định ranh giới rõ ràng giữa Giao diện, Xử lý tác tử và Cơ sở dữ liệu.
+Kiến trúc hệ thống Legal CRAG Assistant được thiết kế theo mô hình ba tầng tách biệt (\textit{three-layer architecture}) chuẩn mực của các hệ thống AI tác tử doanh nghiệp hiện đại. Mô hình phân định ranh giới trách nhiệm rõ ràng (\textit{separation of concerns}) giữa giao diện tương tác người dùng, tầng điều phối suy luận tự chủ và tầng dữ liệu dùng chung.
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.92\textwidth]{images/figure_1.png}
-    \caption{Kiến trúc 3 Layer của Legal CRAG Agent V3.}
+    \includegraphics[width=\textwidth]{images/overview_architecture.png}
+    \caption{Kiến trúc 3 layer của Legal CRAG Assistant: Phân định ranh giới giữa giao diện, lõi tác tử và tầng dữ liệu dùng chung.}
     \label{fig:arch_3layer}
 \end{figure}
 
 \begin{table}[htbp]
 \centering
-\caption{Phân định chức năng và vai trò của từng Layer trong hệ thống}
+\caption{Phân định chức năng và vai trò của từng tầng trong hệ thống}
 \label{tab:layer_roles}
 \renewcommand{\arraystretch}{1.3}
 \rowcolors{2}{tablerowalt}{white}
 \begin{tabularx}{\textwidth}{L{4.2cm} Y}
 \toprule
-\rowcolor{tableheader}\color{white}\textbf{Layer / Khối chức năng} & \color{white}\textbf{Vai trò và Trách nhiệm chính} \\
+\rowcolor{tableheader}\color{white}\textbf{Tầng / Khối chức năng} & \color{white}\textbf{Vai trò và trách nhiệm chính} \\
 \midrule
-\textbf{Layer 1 -- Interface \& API} & Next.js + TypeScript phụ trách giao diện người dùng chuyên nghiệp; FastAPI cung cấp hạ tầng RESTful/JSON API kết nối trực tiếp với Agent, hỗ trợ hiển thị câu trả lời, bảng trích dẫn citation, danh mục source và quản lý phiên. \\
-\textbf{Layer 2 -- Agent \& Correction} & LangGraph điều phối toàn bộ workflow: Router phân loại câu hỏi, Retrieval Evaluator chấm điểm, 3 nhánh xử lý CRAG cốt lõi, Generator và Citation Validator đảm bảo độ chính xác. \\
-\textbf{Layer 3 -- Knowledge \& Data} & SQLite quản lý metadata pháp lý và lịch sử phiên, Chroma DB lưu trữ dense vector index, BM25 lưu lexical index, Reranker tính toán relevance, và công cụ Controlled Web Search với danh sách nguồn cho phép. \\
+\textbf{Tầng 1 -- Giao diện \& Cổng API} & Ứng dụng Web Next.js 14 (TypeScript, Tailwind CSS) cung cấp giao diện tra cứu trực quan và bảng điều khiển quản trị; FastAPI đóng vai trò cổng API Gateway bất đồng bộ, hỗ trợ giao thức Server-Sent Events (SSE) để truyền phát dòng suy nghĩ (\textit{thinking trace}) và câu trả lời theo thời gian thực. \\
+\textbf{Tầng 2 -- Lõi tác tử \& Tự hiệu chỉnh} & Module \texttt{agent/runtime.py} đóng vai trò điểm vào duy nhất quản lý vòng đời lượt hỏi; LangGraph điều phối vòng lặp suy luận ReAct (\textit{Reasoning + Acting}); bộ công cụ tác tử bao bọc \texttt{crag\_search} và \texttt{controlled\_web\_search}; bộ kiểm định trích dẫn xác định \texttt{legal/citations.py} đảm bảo tính trung thực pháp lý. \\
+\textbf{Tầng 3 -- Dữ liệu dùng chung} & Tam giác lưu trữ cốt lõi: SQLite (\texttt{app.db}) là nguồn chân lý duy nhất (\textit{canonical source of truth}), ChromaDB lưu trữ vector nhúng đặc trưng 1024 chiều (\texttt{BAAI/bge-m3}), và BM25Okapi lưu trữ chỉ mục từ khóa chính xác. Tầng dữ liệu phục vụ chung cho cả hai luồng nghiệp vụ hỏi đáp và nạp tài liệu quản trị. \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\section{Luồng Hoạt động CRAG Cốt lõi (3 Nhánh)}
+\section{Lõi tác tử tự chủ và vòng lặp suy luận ReAct}
 
-Trọng tâm của kỹ thuật Corrective RAG là không bao giờ tin tưởng tuyệt đối vào kết quả truy hồi ban đầu. Thay vào đó, một bộ đánh giá (\textit{Retrieval Evaluator}) sẽ phân loại tập tài liệu truy hồi thành một trong ba trạng thái:
+Lõi điều phối của hệ thống Legal CRAG Assistant vận hành theo mô hình \textbf{tác tử AI tự chủ dựa trên vòng lặp ReAct (Reasoning + Acting + Observing)} được xây dựng trên nền tảng LangGraph. Mô hình ngôn ngữ lớn được cung cấp toàn bộ không gian ngữ cảnh và bộ công cụ nghiệp vụ để tự chủ lập luận, đánh giá mức độ đầy đủ của thông tin và phát sinh hành động tương ứng cho từng câu hỏi pháp lý.
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{images/chat_react_crag.png}
+    \caption{Luồng điều phối ReAct tự chủ của lõi tác tử và chu trình quản lý phiên hội thoại.}
+    \label{fig:chat_react_crag}
+\end{figure}
+
+Trong kiến trúc này:
+\begin{enumerate}
+    \item \textbf{Nút tác tử suy luận (Agent Node):} Mô hình ngôn ngữ lớn tiếp nhận toàn bộ ngữ cảnh hội thoại, lịch sử gần đây và hồ sơ khách hàng. Mô hình tự phân tích câu hỏi để quyết định: nếu là câu hỏi xã giao, trả lời trực tiếp; nếu cần tra cứu tri thức nội bộ, phát lệnh gọi \texttt{crag\_search}; nếu cần tìm kiếm mở rộng, phát lệnh gọi \texttt{controlled\_web\_search}.
+    \item \textbf{Nút thực thi công cụ (Tool Node):} Hệ thống phân phối lệnh gọi công cụ tới bộ điều phối công cụ. Kết quả quan sát (\textit{observation}) cùng bằng chứng thu thập được cập nhật ngược lại vào trạng thái của tác tử.
+    \item \textbf{Vòng lặp phản hồi (Feedback Loop):} Tác tử tiếp nhận kết quả công cụ để suy luận tiếp. Nếu \texttt{crag\_search} trả về kết quả \texttt{AMBIGUOUS}, tác tử tự động nhận thấy cần bù đắp thông tin và quyết định gọi tiếp \texttt{controlled\_web\_search} ở lượt kế tiếp.
+    \item \textbf{Rào chắn an toàn (Safety Guardrail):} Để ngăn ngừa tình trạng mô hình bị mắc kẹt trong vòng lặp vô tận khi gặp câu hỏi mơ hồ, hệ thống áp đặt giới hạn nghiêm ngặt $\text{MAX\_TOOL\_ROUNDS} = 3$. Nếu chạm ngưỡng này, quyền gọi công cụ bị khóa và tác tử bắt buộc phải tổng hợp phản hồi từ những bằng chứng hiện có hoặc đưa ra câu trả lời an toàn thừa nhận chưa đủ căn cứ pháp lý.
+\end{enumerate}
+
+\section{Biểu đồ trạng thái của tác tử và động cơ CRAG}
+
+Vòng đời của một lượt xử lý được mô hình hóa chặt chẽ dưới dạng một máy trạng thái hữu hạn (\textit{finite state machine}) trong LangGraph, mô tả tại Hình~\ref{fig:agent_state_machine}.
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.75\textwidth]{images/figure_2.png}
-    \caption{Luồng xử lý 3 nhánh Correct / Ambiguous / Incorrect theo nguyên lý CRAG.}
-    \label{fig:crag_workflow}
+    \includegraphics[width=\textwidth]{images/agent_state_machine.png}
+    \caption{Biểu đồ trạng thái mô tả quá trình chuyển dịch trạng thái của tác tử và động cơ CRAG.}
+    \label{fig:agent_state_machine}
 \end{figure}
 
+Các trạng thái chính bao gồm:
 \begin{itemize}
-    \item \textbf{Nhánh CORRECT (Tài liệu đạt chuẩn):} Điểm liên quan cao vượt ngưỡng $T_{high}$. Hệ thống kích hoạt \textit{Knowledge Refinement} để bóc tách các điều khoản (legal strips) trực tiếp trả lời câu hỏi, loại bỏ nhiễu và chuyển sang bộ sinh câu trả lời.
-    \item \textbf{Nhánh INCORRECT (Tài liệu không phù hợp/thiếu hụt):} Điểm liên quan tối đa nằm dưới ngưỡng $T_{low}$. Hệ thống xác định corpus nội bộ không có căn cứ, loại bỏ toàn bộ tài liệu rác, thực hiện \textit{Query Rewrite} thành truy vấn tìm kiếm chuẩn mực và gọi công cụ \textit{Controlled Web Search} qua các cổng thông tin pháp luật chính thống.
-    \item \textbf{Nhánh AMBIGUOUS (Tài liệu không rõ ràng/chưa đủ):} Điểm liên quan nằm giữa khoảng $[T_{low}, T_{high})$. Hệ thống vừa tinh chế tài liệu nội bộ, vừa viết lại truy vấn để tìm kiếm bổ sung trên web, sau đó tiến hành \textit{Evidence Merging} hợp nhất và khử trùng lặp trước khi sinh lời giải.
+    \item \textbf{ContextPrepared:} Tiếp nhận truy vấn, phân giải cặp định danh \texttt{client\_id/session\_id}, nạp lịch sử ngắn hạn từ bảng \texttt{messages} và hồ sơ doanh nghiệp từ bảng \texttt{memories}.
+    \item \textbf{AgentReasoning:} LLM thực thi suy luận trên bối cảnh đã nạp, quyết định sinh câu trả lời hoặc kích hoạt công cụ.
+    \item \textbf{ToolExecution:} Thực thi công cụ tương ứng. Với \texttt{crag\_search}, hệ thống chạy tuần tự: truy hồi lai $\to$ hợp nhất RRF $\to$ xếp hạng lại bằng Cross-Encoder $\to$ phân loại ba nhánh CRAG $\to$ tinh lọc điều khoản pháp lý.
+    \item \textbf{CitationValidation:} Kiểm tra tính có căn cứ của các mã trích dẫn \texttt{[source\_id]} và xác định tính hiệu lực của văn bản tại mốc thời gian \texttt{as\_of\_date}.
+    \item \textbf{TurnPersistence:} Lưu trữ câu hỏi và câu trả lời vào cơ sở dữ liệu SQLite, cập nhật hồ sơ khách hàng mới và phát tín hiệu streaming về giao diện người dùng.
 \end{itemize}
 
-\begin{calloutbox}{Điểm cải tiến then chốt so với các thiết kế cũ}
-Các phiên bản trước thường đưa nhánh \textit{Ambiguous} quay lại vòng lặp truy hồi (\textit{looping}) với biến \texttt{MAX\_ITER}. Thiết kế V3 loại bỏ việc lặp lại máy móc: nhánh Ambiguous bắt buộc phải kết hợp tinh lọc tri thức nội bộ và mở rộng nguồn web có kiểm soát, giải quyết dứt điểm vấn đề thiếu bằng chứng mà không gây lặp vô hạn.
-\end{calloutbox}
+\section{Biểu đồ tuần tự vòng đời truy vấn}
 
-\section{Stack Công nghệ Đề xuất}
+Hình~\ref{fig:query_lifecycle_sequence} minh họa chi tiết luồng trao đổi thông điệp tuần tự từ khi người dùng gửi câu hỏi trên trình duyệt Next.js cho đến khi nhận được câu trả lời hoàn chỉnh kèm căn cứ pháp luật và thẻ trích dẫn xác minh.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{images/query_lifecycle_sequence.png}
+    \caption{Biểu đồ tuần tự biểu diễn vòng đời toàn diện của một truy vấn qua các tầng hệ thống.}
+    \label{fig:query_lifecycle_sequence}
+\end{figure}
+
+\section{Kiến trúc dữ liệu dùng chung và mô hình thực thể}
+
+Khác với các hệ thống RAG phân tán dễ gây mất đồng bộ, Legal CRAG Assistant áp dụng nguyên tắc tam giác lưu trữ dữ liệu dùng chung với SQLite (\texttt{app.db}) là nguồn chân lý duy nhất.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{images/database_erd.png}
+    \caption{Mô hình quan hệ thực thể (ERD) của cơ sở dữ liệu quan hệ SQLite app.db gồm 8 bảng nghiệp vụ.}
+    \label{fig:database_erd}
+\end{figure}
+
+Cơ sở dữ liệu SQLite được tổ chức thành hai phân hệ độc lập:
+\begin{enumerate}
+    \item \textbf{Phân hệ quản trị và nạp tri thức (Admin):}
+    \begin{itemize}
+        \item \texttt{documents}: Quản lý văn bản pháp quy gốc, số hiệu, cơ quan ban hành, ngày có hiệu lực, tình trạng pháp lý (\texttt{effective}, \texttt{expired}, \texttt{partially\_expired}) và trạng thái nạp dữ liệu (\texttt{READY}, \texttt{PROCESSING}, \texttt{FAILED}).
+        \item \texttt{document\_chunks}: Đơn vị cơ sở phục vụ truy hồi, lưu trữ cấu trúc Điều/Khoản/Điểm, số trang gốc và nội dung đã được làm sạch.
+        \item \texttt{legal\_relations}: Lưu vết quan hệ pháp lý giữa các văn bản (\textit{sửa đổi, bổ sung, thay thế, bãi bỏ, hướng dẫn}).
+        \item \texttt{ingestion\_jobs}: Theo dõi tiến trình xử lý ngầm đa giai đoạn phục vụ bảng điều khiển quản trị.
+    \end{itemize}
+    \item \textbf{Phân hệ hội thoại, phiên và bộ nhớ (User):}
+    \begin{itemize}
+        \item \texttt{clients}: Quản lý định danh ẩn danh của trình duyệt hoặc doanh nghiệp và cờ kích hoạt bộ nhớ.
+        \item \texttt{sessions}: Quản lý các phiên hội thoại riêng biệt của từng khách hàng.
+        \item \texttt{messages}: Lưu vết nguyên văn câu hỏi, câu trả lời, route đã đi, kết quả CRAG và báo cáo kiểm định trích dẫn dạng JSON.
+        \item \texttt{memories}: Hồ sơ ngữ nghĩa doanh nghiệp dài hạn được kiểm soát theo danh mục khóa cho phép.
+    \end{itemize}
+\end{enumerate}
+
+\section{Ngăn xếp công nghệ chuẩn hóa}
+
+Bảng~\ref{tab:tech_stack} trình bày chi tiết các công nghệ được lựa chọn trong quá trình hiện thực hóa hệ thống.
 
 \begin{table}[htbp]
 \centering
-\caption{Chi tiết Stack công nghệ triển khai hệ thống Legal CRAG V3}
+\caption{Chi tiết ngăn xếp công nghệ triển khai hệ thống Legal CRAG Assistant}
 \label{tab:tech_stack}
 \renewcommand{\arraystretch}{1.25}
 \rowcolors{2}{tablerowalt}{white}
 \begin{tabularx}{\textwidth}{L{3.5cm} L{4.5cm} Y}
 \toprule
-\rowcolor{tableheader}\color{white}\textbf{Thành phần} & \color{white}\textbf{Công nghệ lựa chọn} & \color{white}\textbf{Lý do và Ghi chú kỹ thuật} \\
+\rowcolor{tableheader}\color{white}\textbf{Thành phần} & \color{white}\textbf{Công nghệ lựa chọn} & \color{white}\textbf{Lý do và ghi chú kỹ thuật} \\
 \midrule
-Ngôn ngữ nền tảng & Python 3.11+ & Đảm bảo tính tương thích cao với LangGraph, PyTorch và transformers. \\
-LLM Engine & Đa Provider (Groq, OpenAI, OpenRouter, Ollama) & Kiến trúc Factory linh hoạt: Groq (siêu tốc), OpenAI GPT-4o, OpenRouter và Ollama (local on-premise); cấu hình qua \texttt{LLM\_PROVIDER}; cố định \texttt{temperature=0}. \\
-Embedding Model & BAAI/BGE-M3 & Embedding đa ngữ mạnh mẽ, xử lý tốt văn bản pháp luật tiếng Việt. \\
-Dense Vector DB & ChromaDB & Nhẹ, nhúng trực tiếp, tối ưu cho quy mô 50--100 văn bản pháp lý. \\
-Lexical Retrieval & rank-bm25 (BM25Okapi) & Bù đắp exact-match chính xác cho số hiệu văn bản, số Điều/Khoản. \\
-Reranker & BAAI/bge-reranker-v2-m3 & Cross-encoder tính relevance score chuẩn xác cho Retrieval Evaluator. \\
-Agent Orchestrator & LangGraph & Điều phối workflow dạng đồ thị có trạng thái (\textit{StateGraph}) và rẽ nhánh điều kiện. \\
-Cơ sở dữ liệu & SQLite & Quản lý quan hệ văn bản, phiên bản điều luật, session logs và memory. \\
-Web Search & Custom Engine + Allow-list & Chỉ thu thập từ các tên miền công quyền: \texttt{vbpl.vn}, \texttt{chinhphu.vn}... \\
-Đánh giá chất lượng & RAGAS + Custom Metrics & Đo lường Faithfulness, Citation Accuracy và Legal Temporal Correctness. \\
-Theo dõi & LangFuse & Ghi nhận toàn bộ vết thực thi, latency và chi phí token của từng node. \\
-Frontend & Next.js + TypeScript & Giao diện tra cứu hiện đại, hiển thị bảng bằng chứng và lịch sử hội thoại. \\
-API Gateway & FastAPI + Uvicorn & Cung cấp API chuẩn hóa REST/JSON kết nối UI và LangGraph Agent. \\
+Ngôn ngữ \& Môi trường & Python 3.13 + \texttt{uv} & Công cụ \texttt{uv} mang lại tốc độ cài đặt gói phụ thuộc vượt trội; Python 3.13 tối ưu hiệu năng chạy ngầm. \\
+Điều phối tác tử & LangGraph + LangChain & Quản lý đồ thị tác tử có trạng thái với các kênh tích lũy (\texttt{operator.add}); điều phối vòng lặp ReAct. \\
+Mô hình ngôn ngữ & Kiến trúc Factory linh hoạt & Hỗ trợ đa dạng từ mô hình thương mại suy luận nhanh (Groq Llama 3.3 70B, OpenAI GPT-4o) đến triển khai ngoại tuyến nội bộ (\texttt{qwen2.5/qwen3.8} qua Ollama). \\
+Mô hình nhúng & BAAI/BGE-M3 & Mô hình nhúng đa ngữ mạnh mẽ, sinh vector ngữ nghĩa 1024 chiều tối ưu cho cấu trúc pháp luật tiếng Việt. \\
+Cơ sở dữ liệu vector & ChromaDB & Lưu trữ vector nhúng cục bộ tốc độ cao, liên kết 1-1 với khóa định danh của đoạn trích pháp lý. \\
+Truy hồi từ khóa & rank-bm25 (BM25Okapi) & Chỉ mục từ khóa chính xác, bù đắp khả năng tìm kiếm số hiệu văn bản và số Điều luật cụ thể. \\
+Mô hình xếp hạng lại & BAAI/bge-reranker-v2-m3 & Mô hình Cross-Encoder đánh giá tương quan ngữ nghĩa chéo, chuẩn hóa Sigmoid cho bộ đánh giá truy hồi. \\
+Cơ sở dữ liệu quan hệ & SQLite 3 (\texttt{app.db}) & Nguồn chân lý duy nhất lưu trữ metadata, quan hệ văn bản, nhật ký phiên và hồ sơ bộ nhớ. \\
+Tìm kiếm web có kiểm soát & TinyFish API + Whitelist & Chỉ tra cứu trên các tên miền công quyền (\texttt{vbpl.vn}, \texttt{chinhphu.vn}), làm sạch HTML và bóc tách đoạn trích. \\
+Cổng API Backend & FastAPI + Uvicorn & RESTful API chuẩn OpenAPI, hỗ trợ SSE streaming phản hồi theo thời gian thực. \\
+Giao diện người dùng & Next.js 14 + Tailwind CSS & Ứng dụng SPA hiện đại, hiển thị tiến trình suy luận của tác tử, thẻ trích dẫn và trang quản trị. \\
+Giám sát vết thực thi & LangFuse & Ghi nhận toàn diện vết thực thi từng nút, độ trễ, số token tiêu thụ và chi phí mô hình. \\
 \bottomrule
 \end{tabularx}
 \end{table}

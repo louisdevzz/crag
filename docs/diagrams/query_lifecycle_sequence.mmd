@@ -1,0 +1,43 @@
+%%{init: {'theme': 'default', 'themeVariables': {'background': '#FFFFFF', 'fontFamily': 'Times New Roman', 'fontSize': '18px'}}}%%
+sequenceDiagram
+    autonumber
+    actor User as Người dùng
+    participant App as Giao diện & Gateway<br/>(Next.js 14 · FastAPI)
+    participant Agent as Lõi Tác tử ReAct<br/>(Agent Runtime · LangGraph)
+    participant Tools as Bộ Công cụ Tác tử<br/>(crag_search · web_search)
+    participant Storage as Kho Dữ liệu Dùng chung<br/>(SQLite · ChromaDB · BM25)
+
+    User->>App: Gửi câu hỏi pháp lý kèm client_id
+    App->>Agent: prepare_turn(query, client_id, session_id)
+    Agent->>Storage: Đọc 6 lượt chat gần nhất & hồ sơ doanh nghiệp
+    Storage-->>Agent: Trả về conversation_history & memory_context
+
+    rect rgb(245, 240, 255)
+        Note over Agent,Tools: Lượt 1: Tra cứu Tri thức Nội bộ (crag_search)
+        Agent->>Tools: Gọi crag_search(query)
+        Tools->>Storage: Truy hồi lai (Dense BGE-M3 + Lexical BM25)
+        Storage-->>Tools: 20 ứng viên hàng đầu
+        Tools->>Tools: Hợp nhất RRF (k=60) + Cross-Encoder Rerank
+        Tools->>Tools: Đánh giá ngưỡng CRAG -> AMBIGUOUS
+        Tools->>Tools: Tinh lọc dải quy định (Legal Strips >= 0.40)
+        Tools-->>Agent: Trả về evidence nội bộ + hướng dẫn gọi bổ sung web
+    end
+
+    rect rgb(254, 252, 191)
+        Note over Agent,Tools: Lượt 2: Mở rộng Tìm kiếm Web (controlled_web_search)
+        Agent->>Tools: Gọi controlled_web_search(câu truy vấn viết lại)
+        Tools->>Tools: Tìm kiếm trên cổng công quyền (vbpl.vn, chinhphu.vn)
+        Tools->>Tools: Tải trang HTML, làm sạch & trích xuất dải quy định ngoài
+        Tools-->>Agent: Trả về external evidence có URL minh bạch
+    end
+
+    rect rgb(235, 248, 255)
+        Note over Agent,Storage: Tổng hợp Phản hồi & Kiểm định Trích dẫn
+        Agent->>Agent: Soạn thảo câu trả lời có cấu trúc JSON
+        Agent->>Storage: Citation Validator đối chiếu [source_id] & ngày hiệu lực
+        Storage-->>Agent: Xác thực bằng chứng & văn bản còn hiệu lực
+        Agent->>Storage: persist_turn (Lưu tin nhắn & trích xuất hồ sơ mới)
+    end
+
+    Agent-->>App: Truyền phát dòng Server-Sent Events (SSE)
+    App-->>User: Hiển thị câu trả lời hoàn chỉnh & Thẻ trích dẫn pháp lý

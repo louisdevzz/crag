@@ -1,3 +1,4 @@
+% !TEX root = main.tex
 \documentclass[12pt,a4paper,oneside]{report}
 
 \input{preamble}
@@ -11,22 +12,22 @@
 \pagenumbering{roman}
 \setcounter{page}{1}
 
-\chapter*{Tóm tắt Dự án}
-\addcontentsline{toc}{chapter}{Tóm tắt Dự án}
+\chapter*{Tóm tắt dự án}
+\addcontentsline{toc}{chapter}{Tóm tắt dự án}
 
-Tài liệu này là Báo cáo Kỹ thuật và Hướng dẫn Triển khai Toàn diện cho \textbf{Đề tài số 2: Trợ lý Tuân thủ \& Pháp lý Doanh nghiệp (Legal \& Compliance AI Assistant)} thuộc chương trình môn học AI Agent nâng cao cấp Thạc sĩ. Hệ thống giải quyết căn nguyên của vấn đề ảo giác (\textit{hallucination}) trong các hệ thống hỏi đáp văn bản quy phạm pháp luật thông qua kỹ thuật \textbf{Corrective RAG (CRAG)}.
+Tài liệu này là báo cáo kỹ thuật và tài liệu hướng dẫn triển khai toàn diện cho đề tài: \textit{Trợ lý tuân thủ và pháp lý doanh nghiệp (Legal \& Compliance AI Assistant)} thuộc chương trình môn học Tác tử Trí tuệ Nhân tạo Nâng cao. Hệ thống tập trung giải quyết căn nguyên của vấn đề ảo giác (\textit{hallucination}) và sai lệch hiệu lực văn bản trong các bài toán hỏi đáp văn bản quy phạm pháp luật thông qua kỹ thuật \textbf{Corrective RAG (CRAG)}.
 
-Khác với các kiến trúc RAG truyền thống vốn mặc định tin tưởng tuyệt đối vào tài liệu truy hồi, hệ thống Legal CRAG V3 triển khai một cơ chế đánh giá độc lập (\textit{Retrieval Evaluator}) sử dụng mô hình Cross-Encoder để phân loại chất lượng bằng chứng thành ba nhánh rẽ điều kiện:
+Khác với các kiến trúc RAG truyền thống vốn mặc định tin tưởng tuyệt đối vào tài liệu truy hồi, hệ thống Legal CRAG Assistant triển khai một cơ chế đánh giá độc lập (\textit{Retrieval Evaluator}) sử dụng mô hình Cross-Encoder chuyên biệt để phân loại chất lượng bằng chứng thành ba nhánh điều kiện:
 \begin{enumerate}
-    \item \textbf{Nhánh Correct:} Kích hoạt cơ chế tinh lọc tri thức (\textit{Knowledge Refinement}) để bóc tách các điều khoản (\textit{legal strips}) chính xác, loại bỏ phần thừa trước khi chuyển tới bộ sinh.
-    \item \textbf{Nhánh Incorrect:} Nhận diện sự thiếu hụt bằng chứng trong cơ sở tri thức nội bộ, kích hoạt viết lại truy vấn (\textit{Query Rewrite}) và thực hiện tìm kiếm có kiểm soát (\textit{Controlled Web Search}) trên các cổng thông tin pháp luật chính thống của nhà nước.
-    \item \textbf{Nhánh Ambiguous:} Khắc phục dứt điểm hiện tượng lặp lại máy móc của các phiên bản trước bằng cách kết hợp đồng thời việc tinh lọc bằng chứng nội bộ với việc tìm kiếm mở rộng nguồn ngoài, sau đó hợp nhất (\textit{Evidence Merging}) có ưu tiên độ tin cậy.
+    \item \textbf{Nhánh Correct (Đúng):} Kích hoạt cơ chế tinh lọc tri thức (\textit{Knowledge Refinement}) để bóc tách các điều khoản cụ thể (\textit{legal strips}), loại bỏ nhiễu ngữ cảnh trước khi chuyển tới bộ sinh.
+    \item \textbf{Nhánh Incorrect (Sai):} Nhận diện sự thiếu hụt bằng chứng trong cơ sở tri thức nội bộ, kích hoạt cơ chế viết lại truy vấn (\textit{Query Rewrite}) và thực hiện tìm kiếm có kiểm soát (\textit{Controlled Web Search}) trên các cổng thông tin pháp luật chính thống của cơ quan nhà nước.
+    \item \textbf{Nhánh Ambiguous (Mơ hồ):} Kết hợp đồng thời việc tinh lọc bằng chứng nội bộ với việc tìm kiếm mở rộng nguồn ngoài, sau đó hợp nhất bằng chứng (\textit{Evidence Merging}) có ưu tiên độ tin cậy.
 \end{enumerate}
 
-Toàn bộ hệ thống được xây dựng trên nền tảng \textbf{LangGraph}, kiến trúc mô hình ngôn ngữ lớn linh hoạt hỗ trợ đa nhà cung cấp (\textbf{Multi-Provider LLM: Groq, OpenAI GPT, OpenRouter, Ollama}), kỹ thuật truy hồi lai \textbf{Hybrid Retrieval (Dense BGE-M3 + Lexical BM25 + RRF)}, cơ sở dữ liệu quan hệ \textbf{SQLite}, bộ kiểm định trích dẫn xác định \textbf{Citation Validator}, giao diện người dùng \textbf{Next.js (TypeScript)} và cơ chế quản lý \textbf{Session Memory} tách biệt theo cặp ẩn danh \texttt{client\_id/session\_id}.
+Toàn bộ hệ thống được xây dựng trên nền tảng LangGraph với vòng lặp ReAct tự chủ, kiến trúc mô hình ngôn ngữ lớn linh hoạt hỗ trợ đa nhà cung cấp (Groq, OpenAI GPT, OpenRouter, Ollama), kỹ thuật truy hồi lai (Dense BGE-M3 kết hợp Lexical BM25 qua giải thuật RRF), cơ sở dữ liệu quan hệ chuẩn hóa SQLite, bộ kiểm định trích dẫn xác định (\textit{Citation Validator}), giao diện người dùng Next.js 14 và cơ chế quản lý bộ nhớ phiên tách biệt theo cặp ẩn danh \texttt{client\_id/session\_id}.
 
-\vspace{1cm}
-\noindent\textbf{Từ khóa:} \textit{Corrective RAG, AI Agent, LangGraph, Multi-Provider LLM, Groq, OpenAI, OpenRouter, Ollama, Hybrid Retrieval, Citation Validation, Session Memory.}
+\vspace{0.8cm}
+\noindent\textbf{Từ khóa:} Corrective RAG, AI Agent, LangGraph, ReAct loop, Hybrid Retrieval, Citation Validation, Session Memory, Ollama.
 
 \clearpage
 
@@ -51,5 +52,5 @@ Toàn bộ hệ thống được xây dựng trên nền tảng \textbf{LangGrap
 \input{chapters/05_frontend_memory}
 \input{chapters/06_roadmap_report}
 \input{chapters/07_appendices}
-
+\label{LastPage}
 \end{document}

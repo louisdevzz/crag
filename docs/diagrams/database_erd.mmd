@@ -1,0 +1,71 @@
+%%{init: {'theme': 'default', 'themeVariables': {'background': '#FFFFFF', 'fontFamily': 'Times New Roman', 'fontSize': '20px'}}}%%
+erDiagram
+    documents ||--o{ document_chunks : "chứa các đoạn trích"
+    documents ||--o{ ingestion_jobs : "theo dõi tiến trình"
+    documents ||--o{ legal_relations : "quan hệ sửa đổi"
+
+    clients ||--o{ sessions : "sở hữu phiên"
+    clients ||--o{ memories : "hồ sơ thuộc tính"
+    sessions ||--o{ messages : "lưu vết tin nhắn"
+    clients ||--o{ messages : "thực hiện lượt hỏi"
+
+    documents {
+        string id PK "Định danh doc_..."
+        string document_number "Số hiệu văn bản"
+        string title "Tiêu đề trích yếu"
+        date effective_from "Ngày có hiệu lực"
+        string status "READY / FAILED"
+        string legal_status "effective / expired"
+    }
+
+    document_chunks {
+        string id PK "Đoạn trích doc_..._c0001"
+        string document_id FK "Khóa ngoại documents"
+        string chapter "Tên Chương / Phần"
+        string article "Tên Điều (Điều 7)"
+        string heading "Tiêu đề ngữ cảnh"
+        string content "Nội dung điều luật"
+    }
+
+    ingestion_jobs {
+        string id PK "Mã job_..."
+        string document_id FK "Khóa ngoại documents"
+        string stage "OCR / CHUNKING / INDEXING"
+        float progress "Tiến độ 0.0 - 100.0%"
+    }
+
+    legal_relations {
+        int id PK "Khóa chính tự tăng"
+        string source_id FK "Văn bản ban hành sau"
+        string target_id FK "Văn bản chịu tác động"
+        string relation_type "amends / replaces / repeals"
+    }
+
+    clients {
+        string id PK "UUID định danh ẩn danh"
+        int memory_enabled "Cờ bật bộ nhớ (0 / 1)"
+        timestamp last_seen_at "Thời điểm truy cập"
+    }
+
+    sessions {
+        string id PK "UUID phiên làm việc"
+        string client_id FK "Khóa ngoại clients"
+        timestamp started_at "Bắt đầu phiên"
+    }
+
+    messages {
+        int id PK "Khóa chính tự tăng"
+        string session_id FK "Khóa ngoại sessions"
+        string role "user / assistant"
+        string content "Nguyên văn hỏi đáp"
+        string route "direct / crag / web"
+        string crag_action "CORRECT / AMBIGUOUS"
+    }
+
+    memories {
+        int id PK "Khóa chính tự tăng"
+        string client_id FK "Khóa ngoại clients"
+        string memory_key "Khóa ALLOWED_KEYS"
+        string memory_value "Giá trị hồ sơ bền vững"
+        float confidence "Độ tin cậy [0.0, 1.0]"
+    }

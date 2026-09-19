@@ -8,7 +8,7 @@ flowchart TD
     CTXMGR <-->|Đọc/ghi messages, memories| SQLITE[(SQLite<br/>sessions · messages · memories<br/>documents · document_chunks · ingestion_jobs)]:::cMem
     CTXMGR -->|conversation_history + memory_context| CORE
 
-    subgraph REACT["Agent Core — ReAct Loop (agent/graph.py) — no router node"]
+    subgraph REACT["Agent Core — ReAct Loop (agent/graph.py)"]
         direction TB
         CORE[Agent Node<br/>LLM + Provider Manager]:::cRouter
         CORE -->|tool_calls?| DECIDE{Model called<br/>a tool?}:::cRouter

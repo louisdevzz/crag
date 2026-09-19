@@ -1,0 +1,51 @@
+%%{init: {'theme': 'default', 'themeVariables': {'background': '#FFFFFF', 'fontFamily': 'Times New Roman', 'fontSize': '20px'}}}%%
+flowchart TD
+    subgraph L1 ["TẦNG 1: GIAO DIỆN NGƯỜI DÙNG VÀ CỔNG API GATEWAY"]
+        direction LR
+        UI["Next.js 14 Frontend<br/>(TypeScript · Tailwind CSS · SSE Client)"]:::cLayer1
+        API["FastAPI Backend Gateway<br/>(RESTful API · SSE Streaming · CORS)"]:::cLayer1
+        UI <-->|HTTP / SSE Stream| API
+    end
+
+    subgraph L2 ["TẦNG 2: ĐIỀU PHỐI TÁC TỬ VÀ TỰ HIỆU CHỈNH (LANGGRAPH REACT)"]
+        direction LR
+        subgraph AGENT_SYS ["Lõi Tác tử Hội thoại"]
+            direction TB
+            RUNTIME["Agent Runtime (Single Entry Point)"]:::cLayer2
+            CTXMGR["Context Manager (History & Memory)"]:::cLayer2
+            CORE["Agent Core (LLM ReAct Loop)"]:::cEngine
+            RUNTIME --> CTXMGR --> CORE
+        end
+
+        subgraph TOOL_SYS ["Bộ Công cụ Nghiệp vụ"]
+            direction TB
+            T_CRAG["crag_search (Tra cứu nội bộ & Tinh lọc)"]:::cTool
+            T_WEB["controlled_web_search (Cổng công quyền)"]:::cTool
+        end
+
+        VAL["Citation Validator (Kiểm định trích dẫn & ngày)"]:::cVal
+
+        CORE -->|Function Calling| TOOL_SYS
+        TOOL_SYS -->|Observation| CORE
+        CORE -->|Soạn thảo hoàn tất| VAL
+    end
+
+    subgraph L3 ["TẦNG 3: KHO TRI THỨC VÀ DỮ LIỆU DÙNG CHUNG (SHARED DATA LAYER)"]
+        direction LR
+        SQLITE[("SQLite (app.db)<br/>Nguồn chân lý duy nhất<br/>documents · chunks · sessions · memories")]:::cData
+        CHROMA[("ChromaDB Vector Store<br/>Chỉ mục ngữ nghĩa 1024-d<br/>Mô hình BAAI/bge-m3")]:::cData
+        BM25[("BM25 Lexical Index<br/>Chỉ mục từ khóa chính xác<br/>rank-bm25 Engine")]:::cData
+    end
+
+    API --> RUNTIME
+    TOOL_SYS --> L3
+    VAL -->|Kiểm tra hiệu lực| SQLITE
+    VAL --> RUNTIME
+    RUNTIME -->|Phản hồi hoàn tất| API
+
+    classDef cLayer1 fill:#EBF8FF,stroke:#3182CE,stroke-width:2px,color:#2B6CB0;
+    classDef cLayer2 fill:#FAF5FF,stroke:#805AD5,stroke-width:2px,color:#553C9A;
+    classDef cEngine fill:#ED8936,stroke:#C05621,stroke-width:2px,color:#FFFFFF;
+    classDef cTool fill:#FEFCBF,stroke:#D69E2E,stroke-width:2px,color:#744210;
+    classDef cVal fill:#FED7E2,stroke:#D53F8C,stroke-width:2px,color:#702459;
+    classDef cData fill:#C6F6D5,stroke:#38A169,stroke-width:2px,color:#22543D;

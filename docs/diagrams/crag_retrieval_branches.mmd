@@ -1,0 +1,65 @@
+%%{init: {'theme': 'default', 'themeVariables': {'background': '#FFFFFF', 'fontFamily': 'Times New Roman', 'fontSize': '18px'}}}%%
+flowchart LR
+    subgraph P1 ["PHẦN 1: TRUY HỒI LAI VÀ XẾP HẠNG LẠI CROSS-ENCODER"]
+        direction TB
+        Q_IN(["Truy vấn pháp lý từ Agent Node"]):::cStart
+        Q_ROUTER{"Đích danh Điều cụ thể<br/>hay Danh mục văn bản?"}:::cDec
+        EXACT["Exact Locator / Catalog<br/>Bóc tách trực tiếp từ SQLite"]:::cSpec
+        
+        subgraph HYBRID ["Truy hồi lai Kép"]
+            direction LR
+            DENSE["Chroma Dense (BGE-M3)<br/>Top-20 Ứng viên"]:::cDense
+            BM25["BM25Okapi Lexical<br/>Top-20 Ứng viên"]:::cBM25
+        end
+
+        RRF["Hợp nhất RRF (k = 60)<br/>Lấy Top-20 ứng viên"]:::cFusion
+        RERANK["Cross-Encoder Reranker<br/>Chuẩn hóa Sigmoid [0.0, 1.0]<br/>Lọc Top-5 ứng viên"]:::cRerank
+
+        Q_IN --> Q_ROUTER
+        Q_ROUTER -->|Có đích danh| EXACT
+        Q_ROUTER -->|Truy vấn chung| HYBRID
+        HYBRID --> RRF --> RERANK
+    end
+
+    subgraph P2 ["PHẦN 2: BỘ ĐÁNH GIÁ 3 NHÁNH VÀ TINH LỌC DẢI QUY ĐỊNH"]
+        direction TB
+        EVAL{"CRAG Evaluator<br/>Kiểm tra best_score"}:::cEval
+        
+        B_CORRECT["Nhánh CORRECT (>= 0.70)<br/>Bằng chứng nội bộ đầy đủ"]:::cOk
+        B_AMB["Nhánh AMBIGUOUS (0.35 - 0.70)<br/>Bằng chứng đáp ứng một phần"]:::cWarn
+        B_INC["Nhánh INCORRECT (<= 0.35)<br/>Thiếu hụt dữ liệu nội bộ"]:::cFail
+
+        subgraph REFINE ["Cơ chế Tinh lọc Tri thức"]
+            direction TB
+            STRIPS["Bóc tách thành Legal Strips (Khoản/Điểm)"]:::cRef
+            FILTER["Lọc ngưỡng tối thiểu >= 0.40"]:::cRef
+            STRIPS --> FILTER
+        end
+
+        OUT_CORRECT(["Evidence nội bộ + Hướng dẫn: Trả lời trực tiếp"]):::cEndOk
+        OUT_AMB(["Evidence nội bộ + Hướng dẫn: Gọi thêm Web Search"]):::cEndWarn
+        OUT_INC(["Evidence rỗng + Hướng dẫn: Bắt buộc gọi Web Search"]):::cEndFail
+
+        EVAL -->|Score >= 0.70| B_CORRECT --> REFINE --> OUT_CORRECT
+        EVAL -->|0.35 < Score < 0.70| B_AMB --> REFINE --> OUT_AMB
+        EVAL -->|Score <= 0.35| B_INC --> OUT_INC
+        EXACT --> OUT_CORRECT
+    end
+
+    RERANK --> EVAL
+
+    classDef cStart fill:#EBF8FF,stroke:#3182CE,stroke-width:2px,color:#2B6CB0;
+    classDef cDec fill:#FEFCBF,stroke:#D69E2E,stroke-width:2px,color:#744210;
+    classDef cSpec fill:#E9D8FD,stroke:#805AD5,stroke-width:2px,color:#553C9A;
+    classDef cDense fill:#EBF8FF,stroke:#3182CE,stroke-width:2px,color:#2B6CB0;
+    classDef cBM25 fill:#C6F6D5,stroke:#38A169,stroke-width:2px,color:#22543D;
+    classDef cFusion fill:#FAF5FF,stroke:#805AD5,stroke-width:2px,color:#553C9A;
+    classDef cRerank fill:#ED8936,stroke:#C05621,stroke-width:2px,color:#FFFFFF;
+    classDef cEval fill:#DD6B20,stroke:#C05621,stroke-width:2px,color:#FFFFFF;
+    classDef cOk fill:#C6F6D5,stroke:#38A169,stroke-width:2px,color:#22543D;
+    classDef cWarn fill:#FEFCBF,stroke:#D69E2E,stroke-width:2px,color:#744210;
+    classDef cFail fill:#FED7D7,stroke:#E53E3E,stroke-width:2px,color:#742A2A;
+    classDef cRef fill:#E2E8F0,stroke:#718096,stroke-width:2px,color:#1A202C;
+    classDef cEndOk fill:#38A169,stroke:#22543D,stroke-width:2px,color:#FFFFFF;
+    classDef cEndWarn fill:#DD6B20,stroke:#C05621,stroke-width:2px,color:#FFFFFF;
+    classDef cEndFail fill:#E53E3E,stroke:#742A2A,stroke-width:2px,color:#FFFFFF;

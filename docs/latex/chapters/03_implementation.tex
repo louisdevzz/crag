@@ -1,30 +1,37 @@
 % !TEX root = ../main.tex
-\chapter{Quy trình Xây dựng Hệ thống (18 Bước Hiện thực)}
+\chapter{Quy trình xây dựng hệ thống (18 bước hiện thực)}
 
-\section{BƯỚC 1: Chuẩn bị Môi trường \& Cấu hình Trung tâm}
+\section{Bước 1: Chuẩn bị môi trường và cấu hình trung tâm}
 
-Hệ thống yêu cầu cài đặt môi trường ảo riêng biệt để cố định thư viện trước khi chạy các phép đo kiểm chuẩn (\textit{benchmarks}).
+Hệ thống yêu cầu cài đặt môi trường ảo riêng biệt sử dụng công cụ quản lý gói tốc độ cao \texttt{uv} trên nền tảng Python 3.13, cố định phiên bản các thư viện trước khi tiến hành thực nghiệm:
 
-\begin{lstlisting}[language=bash, caption={Khởi tạo môi trường ảo và cài đặt các phụ thuộc}]
-python -m venv .venv
-source .venv/bin/activate  # Trên Linux/macOS (.venv\Scripts\activate tren Windows)
+\begin{lstlisting}[language=bash, caption={Khởi tạo môi trường ảo và cài đặt các gói phụ thuộc}]
+# Cai dat uv neu chua co tren he thong
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-pip install langgraph langchain langchain-chroma chromadb \
-            langchain-groq langchain-openai langchain-ollama \
-            rank-bm25 FlagEmbedding pypdf beautifulsoup4 pandas pydantic \
-            ragas datasets langfuse fastapi uvicorn[standard]
+# Khoi tao va kich hoat moi truong ao Python 3.13
+uv venv --python 3.13 .venv
+source .venv/bin/activate  # Tren macOS/Linux
+
+# Cai dat cac goi thu vien phu thuoc
+uv pip install langgraph langchain langchain-core langchain-community \
+               langchain-chroma chromadb rank-bm25 FlagEmbedding \
+               pypdf pymupdf beautifulsoup4 fastapi uvicorn[standard] \
+               langfuse ragas datasets pydantic python-dotenv requests
 \end{lstlisting}
 
-Toàn bộ tham số hoạt động được gom về một module cấu hình thống nhất, tránh ghi cứng (\textit{hardcoding}) rải rác:
+Toàn bộ tham số vận hành được tập trung tại \texttt{config.py}, tránh ghi cứng rải rác trong mã nguồn:
 
-\begin{lstlisting}[language=Python, caption={File cấu hình trung tâm config.py}]
-# config.py
+\begin{lstlisting}[language=Python, caption={Cấu hình trung tâm hệ thống trong config.py}]
 import os
+from pathlib import Path
 
-# LLM Provider: "groq" | "openai" | "openrouter" | "ollama"
+BASE_DIR = Path(__file__).resolve().parent
+DB_PATH = BASE_DIR / "app.db"
+CHROMA_DIR = BASE_DIR / "data" / "processed" / "chroma"
+
+# Nha cung cap LLM: "groq" | "openai" | "openrouter" | "ollama"
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq")
-
-# Model theo provider (vi du: Groq Llama 3.3 70B, OpenAI GPT-4o-mini, Ollama Qwen)
 LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
 LLM_TEMPERATURE = 0.0
 
@@ -35,290 +42,299 @@ TOP_K_DENSE = 20
 TOP_K_BM25 = 20
 TOP_K_RERANK = 5
 
-# Nguong khoi tao (se duoc toi uu hoa tren Calibration Set)
+# Cap nguong quyet dinh CRAG (Toi uu hoa qua thuc nghiem quet luoi)
 T_LOW = 0.35
 T_HIGH = 0.70
 INTERNAL_STRIP_MIN = 0.40
+MAX_TOOL_ROUNDS = 3
+HISTORY_TURNS = 6
 \end{lstlisting}
 
-\section{BƯỚC 2: Tổ chức Thư mục Dự án}
+\section{Bước 2: Tổ chức thư mục dự án}
 
-Phiên bản V3 tuân thủ nguyên lý tách biệt trách nhiệm (\textit{Separation of Concerns}):
+Mã nguồn được cấu trúc theo nguyên lý phân tách trách nhiệm rõ ràng, chia tách giữa tác tử hội thoại và quy trình nạp tri thức:
 
-\begin{lstlisting}[language=bash, caption={Cấu trúc cây thư mục của project Legal CRAG Agent}]
-legal_crag_agent/
-  data/
-    raw/                       # File van ban PDF/DOCX goc
-    processed/                 # File JSON da parse cau truc phap ly
-    corpus_manifest.json       # Thong tin phien ban va quy mo corpus
-  agent/
-    state.py                   # Dinh nghia TypedDict AgentState
-    nodes.py                   # Cac ham xu ly tai tung node
-    graph.py                   # Do thi LangGraph va cac conditional edges
-  retrieval/
-    dense.py                   # Truy hoi vector ChromaDB
-    bm25.py                    # Truy hoi tu khoa rank-bm25
-    fusion.py                  # Thuat toan hop nhat RRF
-    reranker.py                # Cross-encoder tinh relevance score
-    refine.py                  # Knowledge refinement chia nho thanh legal strips
-  tools/
-    database.py                # Truy van metadata co so du lieu SQLite
-    web_search.py              # Tim kiem mo rong co kiem soat ten mien
-  legal/
-    parser.py                  # Tach van ban theo Chuong/Dieu/Khoan/Diem
-    citations.py               # Kiem dinh citation hop le
-    temporal.py                # Xu ly va doi chieu hieu luc theo thoi gian
-  memory/
-    store.py                   # Quan ly Client, Session va Memory SQLite
-    extractor.py               # Trich xuat Semantic Memory theo allow-list
-  eval/
-    calibration_set.json       # 20 cau dung de chon nguong T_low/T_high
-    test_set.json              # 40 cau held-out dung danh gia cuoi
-    metrics.py                 # Custom metrics: Action F1, Fallback, Citation
-    run_eval.py                # Script chay benchmark tu dong
-  api/
-    main.py                    # FastAPI ung dung REST/JSON
-  frontend/                    # Ung dung Next.js + TypeScript
-  config.py                    # Tham so he thong
-  llm.py                       # Khoi tao Ollama Chat va Embeddings
-  create_db.py                 # Script tao co so du lieu app.db
-  ingest.py                    # Pipeline nap du lieu vao DB va Vector Index
-  main.py                      # Giao dien dong lenh (CLI) test noi bo
+\begin{lstlisting}[language=bash, caption={Cấu trúc cây thư mục chuẩn hóa của Legal CRAG Assistant}]
+crag/
+├── agent/                     # Dieu phoi luot hoi thoai va vong lap ReAct
+│   ├── graph.py               # Dinh nghia StateGraph, routing va bien dich do thi
+│   ├── state.py               # Dinh nghia AgentState va cac reducer channels
+│   ├── nodes.py               # Logic xu ly tai Agent Node, Tool Node, Validator
+│   ├── runtime.py             # Diem vao duy nhat: prepare_turn, persist_turn
+│   └── context.py             # Context Manager lap ghep lich su va ho so client
+├── retrieval/                 # Engine truy hoi da phuong thuc va tinh che
+│   ├── dense.py               # Truy hoi vector ChromaDB voi mo hinh BGE-M3
+│   ├── bm25.py                # Truy hoi tu khoa chinh xac rank-bm25
+│   ├── fusion.py              # Thuat toan hop nhat hang RRF k=60
+│   ├── reranker.py            # Cross-Encoder Reranker va chuan hoa Sigmoid
+│   └── refine.py              # Boc tach legal strips va loc nguong phap ly
+├── tools/                     # Bo cong cu tac tu theo OpenAPI Schema
+│   ├── base.py                # Lop co so BaseLegalTool
+│   ├── registry.py            # Quan ly dang ky va phan phoi cong cu
+│   ├── crag_search.py         # Cong cu CRAG noi bo (Hybrid Search + Refinement)
+│   └── web_search.py          # Cong cu tim kiem web voi whitelist cong quyen
+├── legal/                     # Xu ly chuyen biet van ban quy pham phap luat
+│   ├── cleaner.py             # Lam sach Unicode NFC, bo dot leaders, headers
+│   ├── parser.py              # Phan tach cau truc Chuong, Dieu, Khoan, Diem
+│   ├── citations.py           # Bo kiem dinh trich dan xac dinh (Citation Validator)
+│   └── temporal.py            # Kiem tra hieu luc van ban theo thoi gian thuc
+├── memory/                    # Quan ly bo nho phien va ho so nguoi dung
+│   ├── store.py               # SQLite storage cho sessions, messages, memories
+│   └── extractor.py           # Trich xuat thuoc tinh doanh nghiep theo Allow-List
+├── ingestion/                 # Pipeline nap tri thuc tu dong 8 giai doan
+│   ├── worker.py              # Background Worker ThreadPool chay da luong
+│   ├── chunks.py              # Giai thuat Legal-aware Chunking giu tron Dieu
+│   └── indexer.py             # Dong bo hoa Chroma vector va chi muc BM25
+├── eval/                      # Bo danh gia kiem chuan khoa hoc
+│   ├── run_eval.py            # Script do benchmark tu dong tren tap test
+│   ├── metrics.py             # Cong thuc tinh RAGAS, Fallback va Citation
+│   └── benchmark_report.json  # Bao cao ket qua dinh luong thuc te
+├── api/                       # Ha tang FastAPI RESTful va SSE streaming
+├── frontend/                  # Ung dung giao dien Next.js 14 SPA
+├── schema.sql                 # DDL 8 bang quan he SQLite canonical
+└── config.py                  # Cau hinh tham so tap trung toan he thong
 \end{lstlisting}
 
-\section{BƯỚC 3: Chuẩn bị Corpus Pháp luật}
+\section{Bước 3: Chuẩn bị dữ liệu quy phạm pháp luật}
 
-Corpus tập trung vào 50--100 văn bản chính thức với metadata đầy đủ, bảo đảm kiểm tra được tình trạng hiệu lực và quan hệ sửa đổi/bổ sung.
+Dữ liệu được thu thập có chọn lọc từ Cổng Thông tin Điện tử Chính phủ (\texttt{chinhphu.vn}) và Cơ sở Dữ liệu Quốc gia về Văn bản Pháp luật (\texttt{vbpl.vn}), tập trung vào Luật Doanh nghiệp 2020, Bộ luật Lao động 2019 và các văn bản sửa đổi, bổ sung liên quan.
 
 \begin{table}[htbp]
 \centering
-\caption{Quy mô corpus và các tập dữ liệu thực nghiệm}
+\caption{Quy mô dữ liệu quy phạm và các tập kiểm thử trong hệ thống}
 \label{tab:corpus_scale}
 \renewcommand{\arraystretch}{1.25}
 \rowcolors{2}{tablerowalt}{white}
-\begin{tabularx}{\textwidth}{L{5cm} Y}
+\begin{tabularx}{\textwidth}{L{6.0cm} Y}
 \toprule
-\rowcolor{tableheader}\color{white}\textbf{Thành phần dữ liệu} & \color{white}\textbf{Quy mô chuẩn hóa} \\
+\rowcolor{tableheader}\color{white}\textbf{Thành phần dữ liệu} & \color{white}\textbf{Quy mô thực tế} \\
 \midrule
-Số lượng văn bản quy phạm pháp luật & 50 -- 100 văn bản (Luật, Nghị định, Thông tư) \\
-Số lượng điều khoản (\textit{Provisions}) & Khoảng 500 -- 1.500 Điều / Khoản / Điểm \\
-Số lượng đoạn trích ứng viên (\textit{Candidate chunks}) & Khoảng 1.000 -- 3.000 chunks có cấu trúc \\
-Tập dữ liệu tinh chỉnh ngưỡng (\textit{Calibration Set}) & 20 câu hỏi có gán nhãn ground-truth \\
-Tập kiểm thử độc lập (\textit{Held-out Test Set}) & 40 câu hỏi độc lập với Calibration Set \\
+Tổng số văn bản quy phạm thu thập & 27 văn bản (Luật, Nghị định, Thông tư, Văn bản hợp nhất) \\
+Văn bản đã qua quy trình nạp đạt trạng thái READY & 15 văn bản chuẩn hóa hoàn chỉnh \\
+Tổng số đoạn trích phân đoạn pháp lý (\textit{document\_chunks}) & 1.067 đoạn trích có tiêu đề ngữ cảnh \\
+Tập dữ liệu hiệu chuẩn ngưỡng (\textit{Calibration Set}) & 20 câu hỏi có gán nhãn sự thật khách quan \\
+Tập kiểm thử độc lập (\textit{Held-out Test Set}) & 40 câu hỏi phân bổ đều theo 5 nhóm nghiệp vụ \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\begin{keypoint}
-\textbf{Legal-aware Chunking:} Không dùng kỹ thuật cắt đoạn cố định (\textit{fixed-size recursive chunking 700/100}) gây đứt gãy câu chữ pháp lý. Thay vào đó, văn bản được phân tách theo đúng cấu trúc thứ bậc:
-\[
-\text{Văn bản} \;\longrightarrow\; \text{Chương} \;\longrightarrow\; \text{Điều} \;\longrightarrow\; \text{Khoản} \;\longrightarrow\; \text{Điểm}
-\]
-Mỗi đoạn trích luôn lưu giữ đầy đủ đường dẫn ngược (\textit{provenance}) về văn bản gốc.
-\end{keypoint}
+\section{Bước 4 \& 5: Thiết kế và khởi tạo cơ sở dữ liệu pháp lý SQLite}
 
-\section{BƯỚC 4 \& 5: Thiết kế và Tạo Cơ sở Dữ liệu Pháp lý}
+Toàn bộ mô hình dữ liệu quan hệ được định nghĩa trong \texttt{schema.sql}, gồm 8 bảng phân chia giữa phân hệ nạp tri thức và phân hệ hội thoại:
 
-Schema cơ sở dữ liệu V3 hỗ trợ mô hình hóa phiên bản điều luật theo thời gian và quan hệ sửa đổi phức tạp:
+\begin{lstlisting}[language=SQL, caption={Trích đoạn DDL lược đồ cơ sở dữ liệu SQLite app.db}]
+PRAGMA foreign_keys = ON;
 
-\begin{lstlisting}[language=SQL, caption={Schema cơ sở dữ liệu pháp lý SQLite}]
-CREATE TABLE legal_documents (
+-- 1. Quan ly danh muc van ban phap ly goc
+CREATE TABLE IF NOT EXISTS documents (
     id TEXT PRIMARY KEY,
-    document_number TEXT UNIQUE NOT NULL,
+    filename TEXT NOT NULL,
+    document_number TEXT,
     title TEXT NOT NULL,
     document_type TEXT,
     issuing_authority TEXT,
-    issued_at DATE,
     effective_from DATE,
     effective_to DATE,
-    status TEXT,
-    source_url TEXT NOT NULL,
-    retrieved_at TEXT
+    status TEXT NOT NULL DEFAULT 'UPLOADED', -- UPLOADED | PROCESSING | READY | FAILED
+    legal_status TEXT NOT NULL DEFAULT 'effective', -- effective | expired | partially_expired
+    content_hash TEXT,
+    chunk_count INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE provisions (
+-- 2. Cac doan trich phan manh phap ly (don vi truy hoi co so)
+CREATE TABLE IF NOT EXISTS document_chunks (
     id TEXT PRIMARY KEY,
     document_id TEXT NOT NULL,
-    chapter TEXT,
-    article TEXT,
-    clause TEXT,
-    point TEXT,
+    chunk_index INTEGER NOT NULL,
+    chapter TEXT, article TEXT, clause TEXT, point TEXT,
     heading TEXT,
-    text TEXT NOT NULL,
-    FOREIGN KEY(document_id) REFERENCES legal_documents(id)
+    page_start INTEGER, page_end INTEGER,
+    content TEXT NOT NULL,
+    token_count INTEGER,
+    FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
 );
 
-CREATE TABLE provision_versions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    provision_id TEXT NOT NULL,
-    valid_from DATE,
-    valid_to DATE,
-    text TEXT NOT NULL,
-    source_document_id TEXT,
-    FOREIGN KEY(provision_id) REFERENCES provisions(id)
-);
-
-CREATE TABLE legal_relations (
+-- 3. Quan he sua doi, bo sung, thay the giua cac van ban
+CREATE TABLE IF NOT EXISTS legal_relations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_document_id TEXT NOT NULL,
     target_document_id TEXT NOT NULL,
-    source_provision_id TEXT,
-    target_provision_id TEXT,
     relation_type TEXT NOT NULL, -- 'amends', 'supplements', 'replaces', 'repeals', 'guides'
-    note TEXT
+    note TEXT,
+    FOREIGN KEY(source_document_id) REFERENCES documents(id) ON DELETE CASCADE,
+    FOREIGN KEY(target_document_id) REFERENCES documents(id) ON DELETE CASCADE
+);
+
+-- 4. Tien trinh xu ly nap du lieu cua quan tri vien
+CREATE TABLE IF NOT EXISTS ingestion_jobs (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    stage TEXT NOT NULL DEFAULT 'PARSING',
+    progress REAL NOT NULL DEFAULT 0.0,
+    detail TEXT,
+    FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
 );
 \end{lstlisting}
 
-\begin{lstlisting}[language=Python, caption={Script tạo cơ sở dữ liệu và chỉ mục create\_db.py}]
-import sqlite3
+\section{Bước 6: Cấu hình LLM đa nhà cung cấp, mô hình nhúng và xếp hạng lại}
 
-def init_db(db_path="app.db"):
-    with sqlite3.connect(db_path) as con:
-        con.execute("PRAGMA foreign_keys = ON")
-        con.executescript(open("schema.sql", encoding="utf-8").read())
-        con.execute("CREATE INDEX IF NOT EXISTS idx_doc_number ON legal_documents(document_number)")
-        con.execute("CREATE INDEX IF NOT EXISTS idx_doc_status ON legal_documents(status)")
-        con.execute("CREATE INDEX IF NOT EXISTS idx_provision_doc ON provisions(document_id)")
-        con.execute("CREATE INDEX IF NOT EXISTS idx_relation_target ON legal_relations(target_document_id)")
-    print("Database và các Index đã được khởi tạo thành công.")
-\end{lstlisting}
+Module \texttt{llm.py} cài đặt mô hình Factory Pattern hỗ trợ đa nhà cung cấp, đảm bảo tính sẵn sàng cao với cơ chế chuyển đổi dự phòng tự động:
 
-\section{BƯỚC 6: Cấu hình LLM Đa Provider, Embedding và Reranker}
-
-Hệ thống thiết kế tầng LLM theo mô hình kiến trúc cắm rút (\textit{Pluggable Provider Pattern}). Ollama chạy local chỉ là một trong các nhà cung cấp; hệ thống có thể dễ dàng chuyển đổi hoặc mở rộng sang \textbf{Groq} (suy luận siêu tốc $<1$s), \textbf{OpenAI} (GPT-4o, GPT-4o-mini), \textbf{OpenRouter} (truy cập hơn 100 mô hình mở/đóng) thông qua biến môi trường hoặc file cấu hình mà không phải sửa code Agent.
-
-\begin{lstlisting}[language=Python, caption={Khởi tạo LLM theo Factory Pattern và Reranker Sigmoid}]
+\begin{lstlisting}[language=Python, caption={Khởi tạo mô hình ngôn ngữ, mô hình nhúng và xếp hạng lại}]
 # llm.py
-import os
-from langchain_core.language_models.chat_models import BaseChatModel
 from config import LLM_PROVIDER, LLM_MODEL, LLM_TEMPERATURE
 
-def get_chat_model(provider: str = None, model: str = None) -> BaseChatModel:
+def get_chat_model(provider: str = None, model: str = None):
     p = (provider or LLM_PROVIDER).lower()
     m = model or LLM_MODEL
-    
     if p == "groq":
         from langchain_groq import ChatGroq
         return ChatGroq(model=m, temperature=LLM_TEMPERATURE)
     elif p == "openai":
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(model=m, temperature=LLM_TEMPERATURE)
-    elif p == "openrouter":
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(
-            model=m,
-            temperature=LLM_TEMPERATURE,
-            base_url="https://openrouter.ai/api/v1",
-            api_key=os.getenv("OPENROUTER_API_KEY")
-        )
     elif p == "ollama":
         from langchain_ollama import ChatOllama
         return ChatOllama(model=m, temperature=LLM_TEMPERATURE)
-    else:
-        raise ValueError(f"Unsupported LLM provider: {p}")
+    # OpenRouter va logic chuyen doi du phong...
 
-llm = get_chat_model()
-
-# Khoi tao Embedding da ngu BGE-M3
+# Khoi tao mo hinh nhung da ngu BAAI/bge-m3 (vector 1024 chieu)
 from langchain_ollama import OllamaEmbeddings
 embeddings = OllamaEmbeddings(model="bge-m3")
 
-# retrieval/reranker.py
+# retrieval/reranker.py: Mo hinh Cross-Encoder BAAI/bge-reranker-v2-m3
 from FlagEmbedding import FlagReranker
 from math import exp
-from config import RERANKER_MODEL
 
-reranker = FlagReranker(RERANKER_MODEL, use_fp16=True)
+reranker = FlagReranker("BAAI/bge-reranker-v2-m3", use_fp16=True)
 
-def sigmoid(x: float) -> float:
-    return 1.0 / (1.0 + exp(-float(x)))
+def sigmoid(z: float) -> float:
+    return 1.0 / (1.0 + exp(-float(z)))
 
-def score_pairs(query: str, docs: list[dict]) -> list[float]:
-    pairs = [[query, d["text"]] for d in docs]
+def rerank(query: str, docs: list[dict], top_k: int = 5) -> list[dict]:
+    if not docs:
+        return []
+    pairs = [[query, d.get("content", d.get("text", ""))] for d in docs]
     raw_scores = reranker.compute_score(pairs)
-    return [sigmoid(s) for s in raw_scores]
+    scored = []
+    for doc, s in zip(docs, raw_scores):
+        doc_copy = dict(doc)
+        doc_copy["score"] = sigmoid(s)
+        scored.append(doc_copy)
+    return sorted(scored, key=lambda x: x["score"], reverse=True)[:top_k]
 \end{lstlisting}
 
-\section{BƯỚC 7: Định nghĩa Agent State}
+\section{Bước 7: Định nghĩa trạng thái tác tử với các bộ tích lũy}
 
-Để đảm bảo không trộn lẫn các đoạn trích thô với bằng chứng đã được kiểm duyệt, \texttt{AgentState} phân định rõ từng trường dữ liệu:
+Để duy trì quỹ đạo ReAct nhiều lượt và thu thập chứng cứ không bị ghi đè, \texttt{AgentState} được định nghĩa với các bộ tích lũy chuyên dụng:
 
-\begin{lstlisting}[language=Python, caption={Định nghĩa trạng thái tác tử AgentState trong state.py}]
-from typing import TypedDict
+\begin{lstlisting}[language=Python, caption={Định nghĩa trạng thái AgentState trong agent/state.py}]
+import operator
+from typing import Annotated, Any, Dict, List, Optional, TypedDict
+from langchain_core.messages import BaseMessage
+from langgraph.graph.message import add_messages
 
 class AgentState(TypedDict, total=False):
+    # Thong tin yeu cau va ngu canh hoi thoai
     client_id: str
     session_id: str
     query: str
-    as_of_date: str
+    as_of_date: Optional[str]
     memory_context: str
-    route: str                      # 'rag', 'database', 'general'
-    
-    dense_candidates: list[dict]
-    bm25_candidates: list[dict]
-    candidates: list[dict]          # Sau RRF va Top-K Rerank
-    relevance_scores: list[float]   # Diem sigmoid tu Reranker
-    crag_action: str                # 'CORRECT', 'AMBIGUOUS', 'INCORRECT'
-    
-    internal_evidence: list[dict]   # Sau Knowledge Refinement
-    external_evidence: list[dict]   # Sau Web Search + Selection
-    evidence: list[dict]            # Danh sach evidence thong nhat
-    
-    generation: dict                # Ket qua sinh tu LLM
-    citation_report: dict           # Ket qua kiem tra trinh xac citation
-    trace_meta: dict
+    conversation_history: str
+
+    # Quy dao suy luan ReAct (Tich luy qua cac luot goi cong cu)
+    messages: Annotated[List[BaseMessage], add_messages]
+    evidence: Annotated[List[Dict[str, Any]], operator.add]
+    tool_trace: Annotated[List[Dict[str, Any]], operator.add]
+
+    # Ket qua sinh va kiem dinh trich dan
+    generation: Dict[str, Any]       # {"answer": str, "claims": [...], "abstain": bool}
+    citation_report: Dict[str, Any]  # Ket qua tu CitationValidator
+    follow_up_questions: List[str]   # Goi y cau hoi tiep theo
+    trace_meta: Dict[str, Any]
 \end{lstlisting}
 
-\section{BƯỚC 8: Ingestion Pipeline \& Hybrid Retrieval}
+\section{Bước 8: Quy trình nạp dữ liệu và phân đoạn pháp lý}
 
-Dữ liệu được nạp đồng thời vào Chroma (Vector index) và rank-bm25 (Lexical index):
+Quy trình nạp tài liệu tự động gồm 8 giai đoạn khép kín, được minh họa chi tiết tại Hình~\ref{fig:ingestion_pipeline}.
 
-\begin{lstlisting}[language=Python, caption={Xây dựng Dense Index và BM25 Index}]
-from langchain_chroma import Chroma
-from rank_bm25 import BM25Okapi
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{images/ingestion_pipeline.png}
+    \caption{Quy trình 8 giai đoạn nạp dữ liệu tự động từ tệp văn bản thô đến chỉ mục kép Chroma và BM25.}
+    \label{fig:ingestion_pipeline}
+\end{figure}
 
-# 1. Dense Vector Store
-vectorstore = Chroma.from_texts(
-    texts=[chunk["text"] for chunk in chunks],
-    embedding=embeddings,
-    metadatas=[chunk["metadata"] for chunk in chunks],
-    persist_directory="./chroma",
-    collection_name="legal_corpus_v1",
-)
+Tiến trình xử lý được chia thành:
+\begin{enumerate}
+    \item \textbf{Phân tích cú pháp và nhận dạng quang học:} Nhận diện tệp Word hoặc PDF. Các trang quét ảnh scan được bóc tách và nạp qua Vision LLM OCR với mức song song $\text{OCR\_CONCURRENCY} = 4$.
+    \item \textbf{Làm sạch và cấu trúc hóa:} Loại bỏ biểu mẫu chấm, tiêu đề đầu trang và chân trang, chuẩn hóa bảng mã Unicode tiếng Việt NFC và nhận diện thứ bậc quy phạm pháp luật (\textit{Phần $\to$ Chương $\to$ Mục $\to$ Điều $\to$ Khoản $\to$ Điểm}).
+    \item \textbf{Phân đoạn pháp lý bảo toàn ngữ cảnh:} Phân đoạn ngữ nghĩa điều luật bảo toàn ranh giới (Hình~\ref{fig:legal_chunking_flow}).
+    \item \textbf{Nhúng vector và lập chỉ mục:} Tạo vector ngữ nghĩa BGE-M3 lưu vào ChromaDB và cập nhật chỉ mục từ khóa BM25Okapi dưới nền.
+\end{enumerate}
 
-# 2. BM25 Lexical Store
-def tokenize(text: str) -> list[str]:
-    return text.lower().replace(",", " ").replace(".", " ").split()
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.88\textwidth]{images/legal_chunking_flow.png}
+    \caption{Giải thuật phân đoạn pháp lý Legal-aware Chunking: Bảo toàn nguyên vẹn Điều luật và làm giàu tiêu đề ngữ cảnh.}
+    \label{fig:legal_chunking_flow}
+\end{figure}
 
-bm25 = BM25Okapi([tokenize(chunk["text"]) for chunk in chunks])
-\end{lstlisting}
+Giải thuật phân đoạn pháp lý tuân thủ nguyên tắc:
+\begin{itemize}
+    \item Nếu Điều luật $\le 1200$ từ: Giữ nguyên vẹn toàn bộ Điều thành một đoạn trích duy nhất nhằm bảo toàn tính thống nhất giữa các khoản quy định.
+    \item Nếu Điều luật $> 1200$ từ: Phân tách theo từng Khoản độc lập; nếu Khoản vẫn quá dài thì tiếp tục bóc tách theo cụm Điểm.
+    \item \textbf{Làm giàu tiêu đề ngữ cảnh:} Mỗi đoạn trích đều được gắn kèm dòng tiêu đề ngữ cảnh phân cấp: \textit{Số hiệu văn bản $\to$ Tên Chương/Mục $\to$ Tên Điều $\to$ Số Khoản/Điểm}.
+\end{itemize}
 
-\section{BƯỚC 9: Xây dựng các Tools}
+\section{Bước 9: Hệ thống quản trị công cụ và cơ chế điều phối}
 
-\subsection{Reciprocal Rank Fusion (RRF)}
-Hợp nhất kết quả từ Dense và Lexical retriever theo công thức:
+Module \texttt{tools/registry.py} quản lý danh mục công cụ, chuyển đổi tự động sang cấu trúc lược đồ chuẩn để mô hình ngôn ngữ lớn thực hiện cơ chế gọi hàm (\textit{function calling}) một cách chuẩn xác.
+
+\section{Bước 10: Động cơ truy hồi CRAG và bộ đánh giá ba nhánh}
+
+Công cụ \texttt{crag\_search} là trọng tâm của kỹ thuật Corrective RAG trong hệ thống, thực hiện quy trình xử lý khép kín mô tả tại Hình~\ref{fig:crag_retrieval_branches}.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{images/crag_retrieval_branches.png}
+    \caption{Luồng xử lý chi tiết bên trong công cụ crag\_search và cơ chế rẽ ba nhánh điều kiện của CRAG.}
+    \label{fig:crag_retrieval_branches}
+\end{figure}
+
+\subsection{Truy hồi lai và hợp nhất thứ hạng RRF}
+Hệ thống truy hồi đồng thời 20 ứng viên hàng đầu từ Chroma (Dense) và 20 ứng viên từ BM25 (Lexical), sau đó hợp nhất bằng giải thuật Reciprocal Rank Fusion với hằng số làm mịn $k = 60$:
 \begin{equation}
-S_{\text{RRF}}(d) = \sum_{r \in \mathcal{R}} \frac{1}{k + \text{rank}_r(d)} \quad (\text{với } k = 60)
+S_{\text{RRF}}(d) = \sum_{r \in \{\text{Dense}, \text{BM25}\}} \frac{1}{60 + \text{rank}_r(d)}
 \end{equation}
 
-\begin{lstlisting}[language=Python, caption={Thuật toán Reciprocal Rank Fusion}]
-def rrf_merge(result_lists: list[list[dict]], k: int = 60) -> list[dict]:
-    scores = {}
-    items = {}
-    for results in result_lists:
-        for rank, item in enumerate(results, start=1):
-            key = item["evidence_id"]
-            scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank)
-            items[key] = item
-    ordered_keys = sorted(scores, key=scores.get, reverse=True)
-    return [items[k] for k in ordered_keys]
-\end{lstlisting}
+\subsection{Đánh giá và rẽ ba nhánh điều kiện CRAG}
+Danh sách 5 ứng viên hàng đầu sau khi xếp hạng lại bằng Cross-Encoder được đưa qua hàm đánh giá ngưỡng:
+\begin{equation}
+\text{Action} = \begin{cases}
+\mathbf{CORRECT} & \text{nếu } \max(S) \ge T_{high} \;(0.70) \\
+\mathbf{INCORRECT} & \text{nếu } \max(S) \le T_{low} \;(0.35) \\
+\mathbf{AMBIGUOUS} & \text{nếu } T_{low} < \max(S) < T_{high}
+\end{cases}
+\end{equation}
 
-\subsection{Controlled Web Search Tool}
-\begin{lstlisting}[language=Python, caption={Bộ lọc tên miền chính thống cho công cụ tìm kiếm}]
+\subsection{Cơ chế tinh lọc tri thức (Knowledge Refinement)}
+Khi nhánh rẽ là \textbf{CORRECT} hoặc \textbf{AMBIGUOUS}, hệ thống kích hoạt \texttt{refine\_internal}:
+\begin{enumerate}
+    \item Phân rã từng đoạn văn bản thành các dải quy định cụ thể (\textit{legal strips} theo từng Khoản hoặc Điểm).
+    \item Chấm lại điểm liên quan của từng dải quy định bằng mô hình Cross-Encoder.
+    \item Lọc bỏ toàn bộ các dải quy định có điểm số dưới ngưỡng tối thiểu $\text{INTERNAL\_STRIP\_MIN} = 0.40$.
+\end{enumerate}
+
+\section{Bước 11: Tìm kiếm web có kiểm soát}
+
+Khi kho dữ liệu nội bộ không có căn cứ phù hợp (\textbf{INCORRECT}) hoặc chỉ đáp ứng một phần (\textbf{AMBIGUOUS}), tác tử tự động gọi công cụ tìm kiếm web với danh mục tên miền cho phép:
+\begin{lstlisting}[language=Python, caption={Bộ lọc tên miền chính thống cho công cụ tìm kiếm web}]
 OFFICIAL_DOMAINS = {
     "vbpl.vn", "vanban.chinhphu.vn", "moj.gov.vn", 
-    "chinhphu.vn", "thuvienphapluat.vn"
+    "chinhphu.vn", "thuvienphapluat.vn", "congbao.chinhphu.vn"
 }
 
 def is_allowed_source(url: str) -> bool:
@@ -329,166 +345,99 @@ def is_allowed_source(url: str) -> bool:
         return False
 \end{lstlisting}
 
-\section{BƯỚC 10: Xây dựng CRAG Retrieval Evaluator}
+\section{Bước 12: Bộ kiểm định trích dẫn xác định}
 
-Điểm số tối đa của tập tài liệu được dùng để quyết định hành động:
+Module \texttt{legal/citations.py} đóng vai trò chốt chặn an toàn cuối cùng trước khi phản hồi được xuất ra cho người dùng:
+\begin{enumerate}
+    \item \textbf{Kiểm tra tính tồn tại của căn cứ:} Mọi mã trích dẫn \texttt{[source\_id]} xuất hiện trong câu trả lời phải nằm trong tập bằng chứng (\textit{evidence map}) đã được thu thập thực tế.
+    \item \textbf{Kiểm tra tính hiệu lực theo thời gian:} Căn cứ vào ngày tham chiếu \texttt{as\_of\_date}, hệ thống đối chiếu với trường \texttt{effective\_from}, \texttt{effective\_to} và quan hệ bãi bỏ/thay thế trong cơ sở dữ liệu để cảnh báo nếu trích dẫn văn bản đã hết hiệu lực.
+    \item \textbf{Cơ chế từ chối an toàn (Safe Abstain):} Nếu phát hiện trích dẫn giả mạo hoặc không có căn cứ, hệ thống tự động gắn cờ \texttt{abstain = true} và thay thế bằng câu trả lời an toàn chuẩn: \textit{“Chưa đủ căn cứ pháp lý để kết luận.”}
+\end{enumerate}
 
-\begin{lstlisting}[language=Python, caption={Logic quyết định hành động CRAG dựa trên hai ngưỡng}]
-from config import T_LOW, T_HIGH
+\section{Bước 13: Thiết kế câu lệnh nhắc sinh phản hồi có cấu trúc JSON}
 
-def decide_crag_action(scores: list[float]) -> str:
-    best_score = max(scores) if scores else 0.0
-    if best_score >= T_HIGH:
-        return "CORRECT"
-    elif best_score <= T_LOW:
-        return "INCORRECT"
-    else:
-        return "AMBIGUOUS"
-\end{lstlisting}
+Mô hình ngôn ngữ được ràng buộc tuân thủ khuôn dạng đầu ra có cấu trúc nhằm phân tách rõ rệt giữa mệnh đề kết luận và mã nguồn trích dẫn:
 
-\section{BƯỚC 11 -- 14: Tinh chế Tri thức, Viết lại Truy vấn \& Hợp nhất Bằng chứng}
+\begin{lstlisting}[caption={Câu lệnh nhắc sinh câu trả lời có cấu trúc nghiêm ngặt}]
+Bạn là trợ lý hỗ trợ tra cứu tuân thủ pháp lý doanh nghiệp.
+Chỉ trả lời dựa duy nhất trên các căn cứ pháp lý hiện tại được cung cấp dưới đây.
 
-\begin{figure}[htbp]
-    \centering
-    \begin{calloutbox}{Nguyên tắc Tinh lọc Bằng chứng (Knowledge Refinement)}
-    Khi nhánh là \textbf{CORRECT} hoặc \textbf{AMBIGUOUS}, hệ thống không đưa nguyên đoạn văn bản dài vào Generator. Mỗi passage được phân rã thành các \textit{legal strips} (từng Khoản/Điểm cụ thể), chấm lại điểm relevance bằng Reranker và chỉ giữ lại các strip đạt ngưỡng điểm tối thiểu.
-    \end{calloutbox}
-\end{figure}
-
-\begin{lstlisting}[language=Python, caption={Bóc tách Legal Strips và hợp nhất bằng chứng đa nguồn}]
-def refine_internal(query: str, candidates: list[dict]) -> list[dict]:
-    strips = []
-    for doc in candidates:
-        for strip in split_into_legal_strips(doc):
-            strips.append({**strip, "parent_id": doc["evidence_id"]})
-    ranked = rerank(query, strips)
-    return [s for s in ranked[:8] if s["score"] >= INTERNAL_STRIP_MIN]
-
-def merge_evidence(internal: list[dict], external: list[dict]) -> list[dict]:
-    all_items = internal + external
-    unique_items = deduplicate_by_locator(all_items)
-    # Uu tien: Nguon phap ly chinh thong > Nguon bo tro; sau do xet diem score
-    return sorted(
-        unique_items,
-        key=lambda x: (x.get("source_priority", 0), x.get("score", 0.0)),
-        reverse=True
-    )[:10]
-\end{lstlisting}
-
-\section{BƯỚC 15: Kiểm định Trích dẫn (Citation Validator)}
-
-Hệ thống triển khai cơ chế kiểm tra trích dẫn xác định (\textit{Deterministic Citation Validation}):
-
-\begin{lstlisting}[language=Python, caption={Hàm kiểm định trích dẫn xác định}]
-def validate_citations(answer: dict, evidence_map: dict, as_of_date: str = None) -> dict:
-    errors = []
-    for claim in answer.get("claims", []):
-        for sid in claim.get("source_ids", []):
-            if sid not in evidence_map:
-                errors.append(f"Lỗi: source_id không tồn tại trong tập căn cứ: {sid}")
-                continue
-            if as_of_date and not is_effective_at(evidence_map[sid], as_of_date):
-                errors.append(f"Lỗi: Văn bản {sid} không còn hiệu lực tại ngày {as_of_date}")
-    return {"ok": len(errors) == 0, "errors": errors}
-\end{lstlisting}
-
-\section{BƯỚC 16: Prompt Sinh câu trả lời có Cấu trúc}
-
-\begin{lstlisting}[caption={Prompt sinh câu trả lời có cấu trúc nghiêm ngặt}]
-BẠN LÀ TRỢ LÝ HỖ TRỢ TRA CỨU TUÂN THỦ PHÁP LÝ DOANH NGHIỆP.
-Chỉ trả lời dựa duy nhất trên EVIDENCE PHÁP LÝ HIỆN TẠI được cung cấp dưới đây.
-
-YÊU CẦU BẮT BUỘC:
+Yêu cầu bắt buộc:
 1. Tuyệt đối không tự suy đoán hoặc sáng tạo quy định pháp luật.
-2. Mọi kết luận pháp lý phải được gắn kèm [source_id] của evidence tương ứng.
-3. Không tự tạo số hiệu văn bản, tên Điều/Khoản ngoài danh mục evidence.
-4. Nếu evidence có mâu thuẫn, chỉ rõ sự khác biệt và ưu tiên văn bản có hiệu lực.
-5. Nếu chưa đủ căn cứ, trả lời rõ ràng: "Chưa đủ căn cứ pháp lý để kết luận."
-6. Định dạng đầu ra: Bắt buộc trả về đúng JSON Schema quy định:
+2. Mọi kết luận pháp lý phải được gắn kèm [source_id] của bằng chứng tương ứng.
+3. Nếu chưa đủ căn cứ, trả lời rõ ràng: "Chưa đủ căn cứ pháp lý để kết luận."
+4. Định dạng đầu ra: Bắt buộc trả về đúng định dạng JSON Schema:
    {
-     "answer": "Nội dung trả lời súc tích...",
+     "answer": "Nội dung giải thích súc tích...",
      "claims": [
-       {"text": "Mệnh đề kết luận 1", "source_ids": ["E1", "E2"]},
-       {"text": "Mệnh đề kết luận 2", "source_ids": ["E3"]}
+       {"text": "Mệnh đề pháp lý 1", "source_ids": ["E1", "E2"]},
+       {"text": "Mệnh đề pháp lý 2", "source_ids": ["E3"]}
      ],
      "abstain": false
    }
 
-EVIDENCE:
-{context}
+Căn cứ pháp lý:
+{evidence_context}
 
-CÂU HỎI:
+Câu hỏi:
 {query}
 \end{lstlisting}
 
-\section{BƯỚC 17: Xây dựng LangGraph Hoàn chỉnh}
+\section{Bước 14: Xây dựng và biên dịch đồ thị LangGraph ReAct}
 
-\begin{lstlisting}[language=Python, caption={Thiết lập đồ thị LangGraph với 3 nhánh rẽ điều kiện}]
-from langgraph.graph import StateGraph, END
+Lõi điều phối được lập trình trong \texttt{agent/graph.py} với đồ thị trạng thái 3 nút chính:
+
+\begin{lstlisting}[language=Python, caption={Thiết lập đồ thị LangGraph ReAct trong agent/graph.py}]
+from langgraph.graph import StateGraph, START, END
+from agent.state import AgentState
+from agent.nodes import agent_node, route_after_agent, tool_node, validate_citations_node
 
 def build_crag_graph():
     g = StateGraph(AgentState)
     
-    # Dang ky cac node
-    g.add_node("router", route_question)
-    g.add_node("db", query_db)
-    g.add_node("retrieve", hybrid_retrieve)
-    g.add_node("evaluate", evaluate_retrieval)
-    g.add_node("refine", refine_internal_node)
-    g.add_node("rewrite", rewrite_query_node)
-    g.add_node("web", web_search_node)
-    g.add_node("select_web", select_external_node)
-    g.add_node("merge", merge_evidence_node)
-    g.add_node("generate", generate_answer)
+    # Ba nut chinh cua chu trinh ReAct
+    g.add_node("agent", agent_node)
+    g.add_node("tools", tool_node)
     g.add_node("cite_validate", validate_citations_node)
     
-    # Canh dieu kien sau evaluate: CORRECT -> refine, AMBIGUOUS -> refine, INCORRECT -> rewrite
+    g.add_edge(START, "agent")
+    
+    # Canh dieu kien phan nhanh sau khi Agent suy luan
     g.add_conditional_edges(
-        "evaluate",
-        lambda s: s["crag_action"],
-        {"CORRECT": "refine", "AMBIGUOUS": "refine", "INCORRECT": "rewrite"}
+        "agent",
+        route_after_agent,
+        {
+            "tools": "tools",                   # LLM yeu cau goi cong cu
+            "agent": "agent",                   # Tiep tuc suy luan
+            "cite_validate": "cite_validate"    # Hoan tat, chuyen sang kiem dinh
+        }
     )
     
-    # Dieu huong sau refine
-    g.add_conditional_edges(
-        "refine",
-        lambda s: "generate" if s["crag_action"] == "CORRECT" else "rewrite",
-        {"generate": "generate", "rewrite": "rewrite"}
-    )
-    
-    # Nhanh ngoai
-    g.add_edge("rewrite", "web")
-    g.add_edge("web", "select_web")
-    g.add_conditional_edges(
-        "select_web",
-        lambda s: "merge" if s["crag_action"] == "AMBIGUOUS" else "generate",
-        {"merge": "merge", "generate": "generate"}
-    )
-    
-    g.add_edge("merge", "generate")
-    g.add_edge("generate", "cite_validate")
-    g.add_edge("cite_validate", END)
+    g.add_edge("tools", "agent")                # Observation tra ve cho Agent
+    g.add_edge("cite_validate", END)            # Ket thuc luot hoi thoai
     
     return g.compile()
 \end{lstlisting}
 
-\section{BƯỚC 18: Kịch bản Kiểm thử Bắt buộc khi Demo}
+\section{Bước 15: Kịch bản kiểm thử thực nghiệm phục vụ trình diễn}
+
+Hệ thống cung cấp sẵn kịch bản kiểm thử tự động \texttt{python main.py --demo} bao phủ 5 tình huống kiểm thử đại diện (Bảng~\ref{tab:demo_tests}).
 
 \begin{table}[htbp]
 \centering
-\caption{5 Kịch bản kiểm thử bắt buộc cần demo để minh chứng hoạt động của CRAG}
+\caption{Năm kịch bản kiểm thử bắt buộc cần minh chứng hoạt động của CRAG}
 \label{tab:demo_tests}
 \renewcommand{\arraystretch}{1.25}
 \rowcolors{2}{tablerowalt}{white}
-\begin{tabularx}{\textwidth}{C{1.5cm} L{3.5cm} Y}
+\begin{tabularx}{\textwidth}{C{1.8cm} L{4.0cm} Y}
 \toprule
-\rowcolor{tableheader}\color{white}\textbf{Test} & \color{white}\textbf{Tình huống kiểm thử} & \color{white}\textbf{Luồng kỳ vọng của hệ thống} \\
+\rowcolor{tableheader}\color{white}\textbf{Kịch bản} & \color{white}\textbf{Tình huống kiểm thử} & \color{white}\textbf{Luồng xử lý kỳ vọng của hệ thống} \\
 \midrule
-\textbf{Test 1} & \textit{Correct Case:} Câu hỏi in-corpus có đầy đủ căn cứ trong dữ liệu nội bộ. & Điểm số $\ge T_{high} \;\to\; \mathbf{CORRECT} \;\to\; \text{Refine} \;\to\; \text{Generate} \;\to\; \text{Citation Validate}$. \\
-\textbf{Test 2} & \textit{Incorrect Case:} Câu hỏi về nghị định mới ban hành chưa có trong corpus. & Điểm số $\le T_{low} \;\to\; \mathbf{INCORRECT} \;\to\; \text{Rewrite} \;\to\; \text{Web Search} \;\to\; \text{Select} \;\to\; \text{Generate}$. \\
-\textbf{Test 3} & \textit{Ambiguous Case:} Corpus có quy định chung nhưng thiếu thủ tục chi tiết. & $T_{low} < \text{Score} < T_{high} \;\to\; \mathbf{AMBIGUOUS} \;\to\; \text{Refine} + \text{Web} \;\to\; \text{Merge Evidence} \;\to\; \text{Generate}$. \\
-\textbf{Test 4} & \textit{Database Tool:} “Văn bản số 01/2021/NĐ-CP còn hiệu lực không?” & Router chuyển sang $\mathbf{DB\;Tool} \;\to\;$ Kiểm tra bảng \texttt{legal\_documents} $\;\to\;$ Trả về ngày hiệu lực và trạng thái chính xác. \\
-\textbf{Test 5} & \textit{Citation Failure:} LLM cố tình trích dẫn nguồn không có thực. & Citation Validator phát hiện vi phạm, chặn câu trả lời và báo lỗi hoặc kích hoạt cơ chế sửa đổi có kiểm soát. \\
+\textbf{Kịch bản 1} & \textit{Correct Case:} Câu hỏi trong kho có đầy đủ căn cứ nội bộ. & Điểm số $\ge 0.70 \;\to\; \mathbf{CORRECT} \;\to\; \text{Tinh lọc dải quy định} \;\to\; \text{Sinh phản hồi} \;\to\; \text{Kiểm định trích dẫn}$. \\
+\textbf{Kịch bản 2} & \textit{Incorrect Case:} Câu hỏi về nghị định mới chưa nạp vào kho dữ liệu. & Điểm số $\le 0.35 \;\to\; \mathbf{INCORRECT} \;\to\; \text{Viết lại truy vấn} \;\to\; \text{Tìm kiếm web chính thống} \;\to\; \text{Sinh phản hồi}$. \\
+\textbf{Kịch bản 3} & \textit{Ambiguous Case:} Kho nội bộ có quy định khung nhưng thiếu thủ tục chi tiết. & $0.35 < \text{Điểm} < 0.70 \;\to\; \mathbf{AMBIGUOUS} \;\to\; \text{Tinh lọc} + \text{Web} \;\to\; \text{Hợp nhất bằng chứng} \;\to\; \text{Sinh phản hồi}$. \\
+\textbf{Kịch bản 4} & \textit{Exact Locator:} “Điều 25 Bộ luật Lao động 2019 quy định gì?” & Cơ chế định vị trực tiếp bóc tách toàn bộ các Khoản từ SQLite $\;\to\;$ Phản hồi chính xác tuyệt đối. \\
+\textbf{Kịch bản 5} & \textit{Citation Guardrail:} Mô hình cố tình trích dẫn nguồn không có thật. & Bộ kiểm định phát hiện mã trích dẫn giả mạo $\;\to\;$ Thiết lập \texttt{abstain = true} chặn đứng ảo giác. \\
 \bottomrule
 \end{tabularx}
 \end{table}

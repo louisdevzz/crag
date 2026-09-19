@@ -1,0 +1,47 @@
+%%{init: {'theme': 'default', 'themeVariables': {'background': '#FFFFFF', 'fontFamily': 'Times New Roman', 'fontSize': '20px'}}}%%
+flowchart LR
+    subgraph P1 ["PHẦN 1: GIẢI THUẬT PHÂN RÃ THEO CẤU TRÚC ĐIỀU LUẬT"]
+        direction TB
+        DOC(["Văn bản Pháp luật đã làm sạch"]):::cStart
+        CHECK_ART{"Độ dài Điều luật<br/><= 1200 từ?"}:::cDec
+        CHUNK_ART["Giữ trọn vẹn toàn bộ Điều<br/>(1 Chunk duy nhất)"]:::cChunk1
+        CHECK_CLAUSE{"Điều có nhiều Khoản<br/>độc lập?"}:::cDec
+        CHUNK_CLAUSE["Phân tách theo từng Khoản<br/>(Độ dài <= 800 từ)"]:::cChunk2
+        CHECK_POINT{"Khoản có nhiều Điểm<br/>(Điểm a, b, c...)?"}:::cDec
+        CHUNK_POINT["Phân tách theo cụm Điểm"]:::cChunk3
+        FALLBACK["Cắt trượt dự phòng kèm Overlap"]:::cWarn
+
+        DOC --> CHECK_ART
+        CHECK_ART -->|Đúng| CHUNK_ART
+        CHECK_ART -->|Sai: Quá dài| CHECK_CLAUSE
+        CHECK_CLAUSE -->|Có nhiều Khoản| CHUNK_CLAUSE
+        CHECK_CLAUSE -->|Không có Khoản| FALLBACK
+        CHUNK_CLAUSE --> CHECK_POINT
+        CHECK_POINT -->|Có các Điểm dài| CHUNK_POINT
+        CHECK_POINT -->|Khoản vừa phải| CHUNK_CLAUSE
+    end
+
+    subgraph P2 ["PHẦN 2: LÀM GIÀU TIÊU ĐỀ VÀ LẬP CHỈ MỤC"]
+        direction TB
+        ENRICH["Làm giàu Tiêu đề Ngữ cảnh (Header Enrichment):<br/>• Dòng 1: Số hiệu & Tiêu đề văn bản gốc<br/>• Dòng 2: Tên Chương / Mục cha<br/>• Dòng 3: Số Điều và Tên Điều<br/>• Dòng 4: Số Khoản / Điểm chi tiết"]:::cEnrich
+        
+        SAVE["Lưu trữ bản ghi vào bảng document_chunks<br/>(id, document_id, heading, content, token_count)"]:::cStore
+        DONE(["Hoàn thành Phân đoạn Pháp lý"]):::cEnd
+
+        ENRICH --> SAVE --> DONE
+    end
+
+    CHUNK_ART --> ENRICH
+    CHUNK_CLAUSE --> ENRICH
+    CHUNK_POINT --> ENRICH
+    FALLBACK --> ENRICH
+
+    classDef cStart fill:#EBF8FF,stroke:#3182CE,stroke-width:2px,color:#2B6CB0;
+    classDef cDec fill:#FEFCBF,stroke:#D69E2E,stroke-width:2px,color:#744210;
+    classDef cChunk1 fill:#C6F6D5,stroke:#38A169,stroke-width:2px,color:#22543D;
+    classDef cChunk2 fill:#BEE3F8,stroke:#3182CE,stroke-width:2px,color:#2B6CB0;
+    classDef cChunk3 fill:#E9D8FD,stroke:#805AD5,stroke-width:2px,color:#553C9A;
+    classDef cWarn fill:#FED7D7,stroke:#E53E3E,stroke-width:2px,color:#742A2A;
+    classDef cEnrich fill:#FEFCBF,stroke:#D69E2E,stroke-width:2px,color:#744210;
+    classDef cStore fill:#9AE6B4,stroke:#276749,stroke-width:2px,color:#22543D;
+    classDef cEnd fill:#3182CE,stroke:#2B6CB0,stroke-width:2px,color:#FFFFFF;

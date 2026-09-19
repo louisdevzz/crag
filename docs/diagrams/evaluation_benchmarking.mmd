@@ -1,0 +1,54 @@
+%%{init: {'theme': 'default', 'themeVariables': {'background': '#FFFFFF', 'fontFamily': 'Times New Roman', 'fontSize': '20px'}}}%%
+flowchart LR
+    subgraph P1 ["PHẦN 1: DỮ LIỆU VÀ TỐI ƯU HÓA CẶP NGƯỠNG"]
+        direction TB
+        CORPUS["Corpus Pháp luật Thực tế<br/>27 văn bản · 1.067 đoạn trích"]:::cData
+        SPLIT["Phân tách Độc lập Khắt khe"]:::cSplit
+        CALIB["Calibration Set (20 câu)"]:::cCalib
+        TEST["Held-out Test Set (40 câu)"]:::cTest
+
+        GRID["Quét Lưới Hiệu chuẩn Cặp ngưỡng:<br/>T_low trong [0.20, 0.40], T_high trong [0.60, 0.80]<br/>Tối đa Macro-F1 & Triệt tiêu False Fallback"]:::cGrid
+        OPT["Cặp ngưỡng tối ưu: T_low = 0.35, T_high = 0.70"]:::cOpt
+
+        CORPUS --> SPLIT
+        SPLIT --> CALIB --> GRID --> OPT
+        SPLIT --> TEST
+    end
+
+    subgraph P2 ["PHẦN 2: THỰC THI BENCHMARK VÀ HỆ THỐNG CHỈ SỐ ĐA CHIỀU"]
+        direction TB
+        subgraph BASELINES ["Ma trận 5 Hệ thống Đối chứng"]
+            direction LR
+            S0["S0: LLM-only"]:::cBase
+            S1["S1: Trad. RAG"]:::cBase
+            S2["S2: Always Web"]:::cBase
+            S4["S4: Full CRAG"]:::cBaseHi
+        end
+
+        subgraph METRICS ["Hệ thống Chỉ số Đo lường Toàn diện"]
+            direction TB
+            M1["Truy hồi: Recall@5 · MRR · nDCG"]:::cMet
+            M2["Điều hướng: Fallback Precision · False Fallback Rate"]:::cMet
+            M3["Chất lượng Sinh: RAGAS Faithfulness · Context Recall"]:::cMet
+            M4["Chuẩn mực Pháp lý: Citation Accuracy · Temporal Correctness"]:::cMet
+            M1 --- M2 --- M3 --- M4
+        end
+
+        REPORT["Báo cáo Benchmark Tự động (benchmark_report.json)"]:::cDone
+
+        BASELINES --> METRICS --> REPORT
+    end
+
+    OPT --> P2
+    TEST --> P2
+
+    classDef cData fill:#EBF8FF,stroke:#3182CE,stroke-width:2px,color:#2B6CB0;
+    classDef cSplit fill:#FAF5FF,stroke:#805AD5,stroke-width:2px,color:#553C9A;
+    classDef cCalib fill:#FEFCBF,stroke:#D69E2E,stroke-width:2px,color:#744210;
+    classDef cTest fill:#FED7E2,stroke:#D53F8C,stroke-width:2px,color:#702459;
+    classDef cGrid fill:#EDF2F7,stroke:#4A5568,stroke-width:2px,color:#2D3748;
+    classDef cOpt fill:#C6F6D5,stroke:#38A169,stroke-width:2px,color:#22543D;
+    classDef cBase fill:#EDF2F7,stroke:#718096,stroke-width:2px,color:#1A202C;
+    classDef cBaseHi fill:#3182CE,stroke:#2B6CB0,stroke-width:2px,color:#FFFFFF;
+    classDef cMet fill:#FAF5FF,stroke:#805AD5,stroke-width:2px,color:#553C9A;
+    classDef cDone fill:#38A169,stroke:#22543D,stroke-width:2px,color:#FFFFFF;

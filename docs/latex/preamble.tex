@@ -1,20 +1,13 @@
 % !TEX root = main.tex
 \usepackage{fontspec}
 
-% --- Times New Roman Font Setup ---
-\setmainfont{TimesNewRoman-Regular.ttf}[
-    Path = /home/ubuntu/ai-agent-crag/fonts/,
-    BoldFont = TimesNewRoman-Bold.ttf,
-    ItalicFont = TimesNewRoman-Italic.ttf,
-    BoldItalicFont = TimesNewRoman-BoldItalic.ttf
-]
-\setmonofont{RobotoMono-Regular.ttf}[
-    Path = /home/ubuntu/ai-agent-crag/fonts/,
-    BoldFont = RobotoMono-Bold.ttf
-]
+% --- Only Use Times New Roman Everywhere ---
+\setmainfont{Times New Roman}
+\setsansfont{Times New Roman}
+\setmonofont{Times New Roman}
 
-\usepackage[a4paper, left=2.5cm, right=2.0cm, top=2.5cm, bottom=2.5cm]{geometry}
-\usepackage[table]{xcolor}
+\usepackage[a4paper, left=2.5cm, right=2.0cm, top=2.5cm, bottom=2.5cm, headheight=14.5pt]{geometry}
+\usepackage[table,xcdraw]{xcolor}
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{tabularx}
@@ -22,16 +15,13 @@
 \usepackage{array}
 \usepackage{enumitem}
 \usepackage{fancyhdr}
-\usepackage{lastpage}
 \usepackage{titlesec}
 \usepackage{amsmath,amssymb}
 \usepackage{listings}
-\usepackage[most]{tcolorbox}
 \usepackage{microtype}
 \usepackage{caption}
 \usepackage{setspace}
 \usepackage[hidelinks, unicode, pdfencoding=auto]{hyperref}
-
 % --- Line Spacing (Academic Standard: 1.25) ---
 \setstretch{1.2}
 
@@ -104,47 +94,49 @@
   \renewcommand{\footrulewidth}{0.4pt}
 }
 
-% --- Custom Callouts (tcolorbox) in Neutral Academic Style ---
-\newtcolorbox{calloutbox}[2][]{
-  enhanced,
-  breakable,
-  colback=calloutbg,
-  colframe=calloutborder,
-  coltitle=white,
-  colbacktitle=tableheader,
-  fonttitle=\bfseries\small,
-  title={#2},
-  arc=1.5mm,
-  boxrule=0.8pt,
-  left=8pt, right=8pt, top=6pt, bottom=6pt,
-  #1
+% --- Custom Callouts in Clean Academic Style ---
+\setlength{\fboxsep}{8pt}
+\setlength{\fboxrule}{0.8pt}
+
+\newsavebox{\calloutboxsave}
+\newenvironment{calloutbox}[2][]{%
+  \begin{lrbox}{\calloutboxsave}%
+  \begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}%
+    {\bfseries\small\color{tableheader} #2}\par\vspace{4pt}%
+    \small\color{callouttext}%
+}{%
+  \end{minipage}%
+  \end{lrbox}%
+  \par\addvspace{6pt}\noindent
+  \fcolorbox{calloutborder}{calloutbg}{\usebox{\calloutboxsave}}%
+  \par\addvspace{6pt}%
 }
 
-\newtcolorbox{infobox}[2][]{
-  enhanced,
-  breakable,
-  colback=infobg,
-  colframe=infoborder,
-  coltitle=white,
-  colbacktitle=tableheader,
-  fonttitle=\bfseries\small,
-  title={#2},
-  arc=1.5mm,
-  boxrule=0.8pt,
-  left=8pt, right=8pt, top=6pt, bottom=6pt,
-  #1
+\newsavebox{\infoboxsave}
+\newenvironment{infobox}[2][]{%
+  \begin{lrbox}{\infoboxsave}%
+  \begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}%
+    {\bfseries\small\color{tableheader} #2}\par\vspace{4pt}%
+    \small%
+}{%
+  \end{minipage}%
+  \end{lrbox}%
+  \par\addvspace{6pt}\noindent
+  \fcolorbox{infoborder}{infobg}{\usebox{\infoboxsave}}%
+  \par\addvspace{6pt}%
 }
 
-\newtcolorbox{keypoint}[1][]{
-  enhanced,
-  breakable,
-  colback=lightbg,
-  colframe=black,
-  arc=1.5mm,
-  boxrule=0.6pt,
-  leftrule=3.5pt,
-  left=8pt, right=8pt, top=6pt, bottom=6pt,
-  #1
+\newsavebox{\keypointsave}
+\newenvironment{keypoint}[1][]{%
+  \begin{lrbox}{\keypointsave}%
+  \begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}%
+    \small%
+}{%
+  \end{minipage}%
+  \end{lrbox}%
+  \par\addvspace{6pt}\noindent
+  \fcolorbox{black}{lightbg}{\usebox{\keypointsave}}%
+  \par\addvspace{6pt}%
 }
 
 % --- Listings / Code Formatting ---

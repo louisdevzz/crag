@@ -1,0 +1,31 @@
+%%{init: {'theme': 'default', 'themeVariables': {'background': '#FFFFFF', 'fontFamily': 'Times New Roman', 'fontSize': '18px'}}}%%
+flowchart TD
+    subgraph STAGE1 ["GIAI ĐOẠN 1: TIẾP NHẬN YÊU CẦU VÀ SUY LUẬN TỰ CHỦ"]
+        direction LR
+        S_IDLE["Idle: Sẵn sàng"]:::cState --> S_PREP["ContextPrepared:<br/>Nạp History & Memory"]:::cState
+        S_PREP --> S_REASON{"AgentReasoning:<br/>LLM Lập luận tự chủ"}:::cDec
+        S_REASON -->|Cần tra cứu| S_TOOL["ToolExecution:<br/>Gọi crag_search / web_search"]:::cState
+        S_REASON -->|Đủ dữ liệu| S_GEN["AnswerGeneration:<br/>Soạn thảo câu trả lời JSON"]:::cState
+        S_TOOL -->|Trả Observation| S_REASON
+    end
+
+    subgraph STAGE2 ["GIAI ĐOẠN 2: KIỂM ĐỊNH TRÍCH DẪN VÀ LƯU VẾT PHIÊN"]
+        direction LR
+        S_VAL{"CitationValidation:<br/>Đối chiếu source_id & Ngày"}:::cDec
+        S_VALID["ValidCitation:<br/>Bằng chứng 100% hợp lệ"]:::cOk
+        S_ABSTAIN["SafeAbstain:<br/>Phát hiện lỗi / Chưa đủ căn cứ"]:::cWarn
+        S_PERSIST["TurnPersistence:<br/>Lưu messages & Semantic Profile"]:::cState
+        S_STREAM(["StreamingResponse:<br/>Phản hồi SSE về Client"]):::cEnd
+
+        S_VAL -->|Hợp lệ| S_VALID --> S_PERSIST
+        S_VAL -->|Vi phạm| S_ABSTAIN --> S_PERSIST
+        S_PERSIST --> S_STREAM
+    end
+
+    STAGE1 -->|Chuyển bản thảo sang kiểm định| STAGE2
+
+    classDef cState fill:#EBF8FF,stroke:#3182CE,stroke-width:2px,color:#2B6CB0;
+    classDef cDec fill:#FEFCBF,stroke:#D69E2E,stroke-width:2px,color:#744210;
+    classDef cOk fill:#C6F6D5,stroke:#38A169,stroke-width:2px,color:#22543D;
+    classDef cWarn fill:#FEEBC8,stroke:#DD6B20,stroke-width:2px,color:#7B341E;
+    classDef cEnd fill:#3182CE,stroke:#2B6CB0,stroke-width:2px,color:#FFFFFF;

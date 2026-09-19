@@ -1,0 +1,46 @@
+%%{init: {'theme': 'default', 'themeVariables': {'background': '#FFFFFF', 'fontFamily': 'Times New Roman', 'fontSize': '13px'}}}%%
+flowchart TD
+    START_FILE(["Văn bản Pháp quy (PDF / DOCX / TXT)"]):::cStart --> UPLOAD["Upload API / CLI Ingestion<br/>Tạo bản ghi documents & jobs"]:::cStage
+    UPLOAD --> BG_WORKER["Background Worker ThreadPool<br/>(INGESTION_WORKERS = 3)"]:::cStage
+
+    subgraph ROW1 ["PHẦN 1: TIẾP NHẬN, OCR VÀ LÀM SẠCH VĂN BẢN THÔ"]
+        direction LR
+        S1["GĐ 1: PARSING<br/>PyMuPDF kiểm tra Text Layer<br/>Bóc tách trang văn bản"]:::cSub
+        S2["GĐ 2: OCR SCAN<br/>Vision LLM Worker<br/>(Concurrency = 4)"]:::cOCR
+        S3["GĐ 3: CLEANING<br/>Loại bỏ dot leaders, footers<br/>Chuẩn hóa Unicode NFC"]:::cClean
+        S4["GĐ 4: STRUCTURING<br/>Phần -> Chương -> Mục<br/>-> Điều -> Khoản -> Điểm"]:::cStruct
+
+        S1 -->|Trang ảnh scan| S2
+        S1 -->|Đã có text layer| S3
+        S2 --> S3
+        S3 --> S4
+    end
+
+    BG_WORKER --> S1
+
+    subgraph ROW2 ["PHẦN 2: PHÂN ĐOẠN PHÁP LÝ, NHÚNG VECTOR VÀ LẬP CHỈ MỤC KÉP"]
+        direction LR
+        S5["GĐ 5: CHUNKING<br/>Legal-aware Chunking<br/>Bảo toàn Điều & Header"]:::cChunk
+        S6["GĐ 6: EMBEDDING<br/>Mô hình BGE-M3 (1024-d)<br/>Nhúng ngữ nghĩa ngầm"]:::cEmbed
+        S7["GĐ 7: INDEXING<br/>ChromaDB (Dense Vector)<br/>BM25Okapi (Lexical Index)"]:::cIndex
+        S8["GĐ 8: SẴN SÀNG<br/>status = READY trong SQLite<br/>Kích hoạt phục vụ CRAG"]:::cDone
+
+        S5 --> S6
+        S6 --> S7
+        S7 --> S8
+    end
+
+    S4 -->|Chuyển tiếp văn bản có cấu trúc| S5
+    S8 --> END_KB(["Kho Tri thức CRAG Hoàn tất"]):::cEnd
+
+    classDef cStart fill:#EBF8FF,stroke:#3182CE,stroke-width:2px,color:#2B6CB0;
+    classDef cStage fill:#FAF5FF,stroke:#805AD5,stroke-width:2px,color:#553C9A;
+    classDef cSub fill:#EDF2F7,stroke:#4A5568,stroke-width:2px,color:#2D3748;
+    classDef cOCR fill:#FEEBC8,stroke:#DD6B20,stroke-width:2px,color:#7B341E;
+    classDef cClean fill:#E2E8F0,stroke:#718096,stroke-width:2px,color:#1A202C;
+    classDef cStruct fill:#E9D8FD,stroke:#805AD5,stroke-width:2px,color:#553C9A;
+    classDef cChunk fill:#C6F6D5,stroke:#38A169,stroke-width:2px,color:#22543D;
+    classDef cEmbed fill:#FED7D7,stroke:#E53E3E,stroke-width:2px,color:#742A2A;
+    classDef cIndex fill:#FEFCBF,stroke:#D69E2E,stroke-width:2px,color:#744210;
+    classDef cDone fill:#9AE6B4,stroke:#276749,stroke-width:2px,color:#22543D;
+    classDef cEnd fill:#3182CE,stroke:#2B6CB0,stroke-width:2px,color:#FFFFFF;

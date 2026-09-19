@@ -1,81 +1,82 @@
 % !TEX root = ../main.tex
-\chapter{Mở rộng: Next.js Frontend \& Quản lý Session Memory}
+\chapter{Mở rộng giao diện người dùng và quản lý bộ nhớ phiên}
 
-\section{Kiến trúc Tích hợp Next.js + FastAPI + Memory}
+\section{Kiến trúc tích hợp giao diện, cổng API và bộ nhớ}
 
-Hệ thống bổ sung giao diện người dùng hiện đại và cơ chế quản lý ngữ cảnh phiên hội thoại sau khi lõi CRAG đã được kiểm chứng độc lập.
+Sau khi lõi tác tử và cơ chế CRAG đã được chứng minh hiệu quả độc lập qua các kịch bản kiểm chuẩn, hệ thống được mở rộng một giao diện người dùng hiện đại (Next.js 14) và cơ chế quản lý ngữ cảnh phiên hội thoại.
 
 \begin{figure}[htbp]
     \centering
-    \begin{keypoint}
-    \centering
-    \textbf{Luồng tương tác Frontend -- Backend -- Memory}\\[0.2cm]
-    $\text{Next.js Frontend (Trình duyệt)} \;\xrightarrow{\text{client\_id, session\_id}}\; \text{FastAPI Gateway} \;\longrightarrow\; \text{LangGraph Agent Core}$\\
-    $\Downarrow$\\
-    $\text{Memory Context (Bối cảnh doanh nghiệp)} \quad \ne \quad \text{Legal Evidence (Căn cứ pháp lý hiện hành)}$
-    \end{keypoint}
-    \caption{Kiến trúc tách biệt giữa ngữ cảnh người dùng và căn cứ pháp lý.}
-    \label{fig:memory_flow}
+    \includegraphics[width=0.95\textwidth]{images/memory_architecture.png}
+    \caption{Phân cấp ba tầng bộ nhớ (làm việc, lịch sử, ngữ nghĩa) và tường lửa cách ly đa người dùng.}
+    \label{fig:memory_architecture}
 \end{figure}
 
-Next.js lưu trữ một mã định danh ẩn danh (\texttt{client\_id}) trên trình duyệt qua \texttt{localStorage} và tự động sinh \texttt{session\_id} ngẫu nhiên cho từng phiên làm việc. FastAPI tiếp nhận yêu cầu, nạp lịch sử tương tác gần nhất và thông tin hồ sơ doanh nghiệp đã xác thực, truyền vào AgentState nhưng \textbf{cô lập hoàn toàn khỏi danh mục trích dẫn pháp lý}.
+Giao diện Next.js lưu trữ một mã định danh ẩn danh (\texttt{client\_id}) trên trình duyệt thông qua \texttt{localStorage} và tự động sinh \texttt{session\_id} ngẫu nhiên cho từng phiên làm việc. Cổng API FastAPI tiếp nhận yêu cầu, phối hợp cùng Context Manager để nạp lịch sử tương tác gần nhất và thông tin hồ sơ doanh nghiệp đã xác thực, truyền vào \texttt{AgentState} nhưng \textbf{cô lập hoàn toàn khỏi danh mục trích dẫn pháp lý}.
 
-\section{Phân cấp Ba Lớp Memory}
+\section{Phân cấp ba lớp bộ nhớ}
+
+Bảng~\ref{tab:memory_layers} mô tả chi tiết 3 cấp độ bộ nhớ được thiết kế nhằm cân bằng giữa khả năng duy trì ngữ cảnh tự nhiên và an toàn dữ liệu.
 
 \begin{table}[htbp]
 \centering
-\caption{Phân tầng 3 cấp độ Memory trong hệ thống}
+\caption{Phân tầng ba cấp độ bộ nhớ trong hệ thống}
 \label{tab:memory_layers}
 \renewcommand{\arraystretch}{1.3}
 \rowcolors{2}{tablerowalt}{white}
 \begin{tabularx}{\textwidth}{L{3.5cm} L{4.2cm} Y}
 \toprule
-\rowcolor{tableheader}\color{white}\textbf{Loại Memory} & \color{white}\textbf{Vị trí lưu trữ} & \color{white}\textbf{Mục đích và Phạm vi sử dụng} \\
+\rowcolor{tableheader}\color{white}\textbf{Loại bộ nhớ} & \color{white}\textbf{Vị trí lưu trữ} & \color{white}\textbf{Mục đích và phạm vi sử dụng} \\
 \midrule
-\textbf{Working / Session} & \texttt{AgentState} \& RAM & Duy trì trạng thái câu hỏi, kết quả truy hồi và bằng chứng của phiên chat tức thời. \\
-\textbf{Episodic / History} & Bảng \texttt{query\_logs} (SQLite) & Lưu vết tuần tự các câu hỏi, câu trả lời, route đã chọn và hành động CRAG. \\
-\textbf{Semantic / Profile} & Bảng \texttt{client\_memories} & Ghi nhớ các thuộc tính bền vững của doanh nghiệp (loại hình, địa bàn, ngành nghề). \\
+\textbf{Bộ nhớ làm việc (Tầng 1)} & \texttt{AgentState} \& RAM & Duy trì trạng thái câu hỏi, kết quả truy hồi và bằng chứng của phiên hội thoại tức thời; giải phóng ngay sau khi hoàn tất lượt hỏi. \\
+\textbf{Lịch sử tương tác (Tầng 2)} & Bảng \texttt{messages} (SQLite) & Lưu vết tuần tự các câu hỏi, câu trả lời, route đã chọn, kết quả CRAG và báo cáo trích dẫn. Context Manager chỉ nạp 6 lượt gần nhất (\texttt{HISTORY\_TURNS = 6}). \\
+\textbf{Hồ sơ ngữ nghĩa (Tầng 3)} & Bảng \texttt{memories} (SQLite) & Ghi nhớ các thuộc tính bền vững của doanh nghiệp (loại hình, địa bàn, ngành nghề) kèm điểm tin cậy (\textit{confidence score}) $[0.0, 1.0]$. \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\begin{calloutbox}{Nguyên tắc an toàn tối thượng (Memory Guardrail)}
-Memory chỉ đóng vai trò hỗ trợ bối cảnh và giải nghĩa đại từ. \textbf{Mọi phán quyết và kết luận pháp lý đều bắt buộc phải được truy hồi lại từ các văn bản hiện hành trong Legal Database hoặc Web chính thống.} Tuyệt đối không sử dụng câu trả lời lưu trong memory như một căn cứ pháp luật.
+\begin{calloutbox}{Nguyên tắc an toàn tối thượng về bộ nhớ}
+Bộ nhớ chỉ đóng vai trò hỗ trợ giải thích bối cảnh và giải nghĩa đại từ. Mọi phán quyết và kết luận pháp lý đều bắt buộc phải được truy hồi lại từ các văn bản hiện hành trong cơ sở dữ liệu pháp luật hoặc cổng thông tin web chính thống. Tuyệt đối không sử dụng thông tin lưu trong bộ nhớ như một nguồn căn cứ pháp luật.
 \end{calloutbox}
 
-\section{Thiết kế Database cho Client, Session và Memory}
+\section{Thiết kế cơ sở dữ liệu cho định danh, phiên và bộ nhớ}
 
-\begin{lstlisting}[language=SQL, caption={Schema quản lý Client, Session và Lịch sử truy vấn}]
-CREATE TABLE clients (
+Toàn bộ phân hệ người dùng và bộ nhớ được chuẩn hóa trong SQLite \texttt{app.db} với 4 bảng quan hệ ràng buộc khóa ngoại chặt chẽ:
+
+\begin{lstlisting}[language=SQL, caption={Lược đồ quản lý định danh, phiên hội thoại và bộ nhớ người dùng}]
+CREATE TABLE IF NOT EXISTS clients (
     id TEXT PRIMARY KEY,
     memory_enabled INTEGER DEFAULT 1,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE chat_sessions (
+CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     client_id TEXT NOT NULL,
+    title TEXT,
     started_at TEXT DEFAULT CURRENT_TIMESTAMP,
     last_active_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(client_id) REFERENCES clients(id)
+    FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE CASCADE
 );
 
-CREATE TABLE query_logs (
+CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    client_id TEXT NOT NULL,
     session_id TEXT NOT NULL,
-    question TEXT NOT NULL,
-    answer TEXT,
+    client_id TEXT NOT NULL,
+    role TEXT NOT NULL, -- 'user' | 'assistant'
+    content TEXT NOT NULL,
     route TEXT,
     crag_action TEXT,
     source_type TEXT,
+    evidence_json TEXT,
+    citation_report_json TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(client_id) REFERENCES clients(id),
-    FOREIGN KEY(session_id) REFERENCES chat_sessions(id)
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE CASCADE
 );
 
-CREATE TABLE client_memories (
+CREATE TABLE IF NOT EXISTS memories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     client_id TEXT NOT NULL,
     memory_key TEXT NOT NULL,
@@ -83,50 +84,52 @@ CREATE TABLE client_memories (
     confidence REAL DEFAULT 1.0,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(client_id, memory_key),
-    FOREIGN KEY(client_id) REFERENCES clients(id)
+    FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE CASCADE
 );
 \end{lstlisting}
 
-\section{Kiểm soát Semantic Memory qua Danh mục Cho phép (Allow-List)}
+\section{Kiểm soát bộ nhớ ngữ nghĩa qua danh mục cho phép}
 
-Hệ thống áp dụng cơ chế trích xuất có kiểm soát nghiêm ngặt nhằm bảo vệ quyền riêng tư và tránh ô nhiễm bộ nhớ:
+Hệ thống áp dụng cơ chế trích xuất có kiểm soát nghiêm ngặt trong \texttt{memory/extractor.py} nhằm bảo vệ quyền riêng tư và tránh ô nhiễm bộ nhớ:
 
-\begin{lstlisting}[language=Python, caption={Cơ chế Allow-List và trích xuất Semantic Memory}]
+\begin{lstlisting}[language=Python, caption={Cơ chế kiểm soát danh mục cho phép và trích xuất hồ sơ}]
 ALLOWED_MEMORY_KEYS = {
-    "business_type",      # Vi du: Cong ty TNHH, Co phan
-    "industry",           # Nganh nghe: Xay dung, Thuong mai dien tu
-    "province",           # Dia ban: Ha Noi, TP.HCM, Long An
-    "frequent_topic",     # Chu de hay quan tam: Lao dong, Hop dong
-    "preferred_answer"    # So thich trinh bay: Ngan gon, Chi tiet
+    "business_type",      # Loai hinh: Cong ty TNHH, Co phan, Doanh nghiep tu nhan
+    "industry",           # Nganh nghe: Xay dung, Thuong mai dien tu, Cong nghe
+    "province",           # Dia ban hoat dong: Ha Noi, TP.HCM, Long An, Da Nang
+    "frequent_topic",     # Chu de quan tam: Lao dong, Hop dong, Giay phep
+    "preferred_answer"    # Phong cach trinh bay: Ngan gon, Chi tiet
 }
 
-# Prompt trich xuat thong tin ben vung tu hoi thoai:
-# 1. Chi trich xuat cac thuoc tinh nam trong danh muc cho phep ALLOWED_MEMORY_KEYS.
-# 2. Tuyet doi khong luu mat khau, CCCD/CMND, bi mat kinh doanh.
+# Quy tac trich xuat ho so nguoi dung:
+# 1. Chi trich xuat cac thuoc tinh nam trong danh muc ALLOWED_MEMORY_KEYS.
+# 2. Tuyet doi khong luu mat khau, so CCCD/CMND, bi mat kinh doanh.
 # 3. Gan diem tin cay (confidence) tu 0.0 den 1.0.
-# 4. Tra ve mang JSON rong [] neu khong co thong tin phu hop.
+# 4. Neu nguoi dung phu nhan thong tin cu, tu dong cap nhat gia tri moi.
 \end{lstlisting}
 
-\section{Prompt Trả lời Phân tách Bối cảnh và Căn cứ Pháp lý}
+\section{Câu lệnh nhắc phân tách bối cảnh người dùng và căn cứ pháp lý}
 
-\begin{lstlisting}[caption={Prompt trả lời kết hợp Memory có kiểm soát}]
-BOI CANH CLIENT (Chi dung de hieu hoan canh, khong co gia tri phap ly):
+\begin{lstlisting}[caption={Câu lệnh nhắc trả lời kết hợp bối cảnh có kiểm soát}]
+Bối cảnh người dùng (Chỉ dùng để hiểu hoàn cảnh, không có giá trị pháp lý):
 {memory_context}
 
-EVIDENCE PHAP LY HIEN TAI (Nguon can cu duy nhat de dua ra ket luan):
+Căn cứ pháp lý hiện tại (Nguồn căn cứ duy nhất để đưa ra kết luận):
 {legal_context}
 
-CAU HOI HIEN TAI:
+Câu hỏi hiện tại:
 {query}
 
-QUY TAC THUC THI:
-1. Memory chi giup giai thich dai tu (vi du: "cong ty toi" -> Cong ty TNHH tai Long An).
-2. Tuyet doi khong lay thong tin tu cau tra loi cu thay the cho van ban phap luat hien hanh.
-3. Moi ket luan phap ly dua ra bat buoc phai trich dan source_id tu danh muc EVIDENCE.
-4. Neu EVIDENCE khong co dieu khoan tuong ung, noi ro: "Chua du can cu phap ly de ket luan".
+Quy tắc thực thi:
+1. Bộ nhớ chỉ giúp giải thích đại từ (ví dụ: "công ty tôi" -> Công ty TNHH tại Long An).
+2. Tuyệt đối không lấy thông tin từ câu trả lời cũ thay thế cho văn bản pháp luật hiện hành.
+3. Mọi kết luận pháp lý đưa ra bắt buộc phải trích dẫn source_id từ danh mục căn cứ pháp lý.
+4. Nếu căn cứ không có điều khoản tương ứng, nói rõ: "Chưa đủ căn cứ pháp lý để kết luận".
 \end{lstlisting}
 
-\section{Kịch bản Demo Tái sử dụng Ngữ cảnh trên Trình duyệt}
+\section{Kịch bản trình diễn duy trì ngữ cảnh trên trình duyệt}
+
+Bảng~\ref{tab:demo_memory} minh chứng khả năng duy trì ngữ cảnh tự nhiên khi người dùng trao đổi nhiều lượt trên trình duyệt.
 
 \begin{table}[htbp]
 \centering
@@ -136,32 +139,32 @@ QUY TAC THUC THI:
 \rowcolors{2}{tablerowalt}{white}
 \begin{tabularx}{\textwidth}{C{1.8cm} L{5cm} Y}
 \toprule
-\rowcolor{tableheader}\color{white}\textbf{Thời điểm} & \color{white}\textbf{Hành động người dùng} & \color{white}\textbf{Cơ chế xử lý của hệ thống Agent} \\
+\rowcolor{tableheader}\color{white}\textbf{Thời điểm} & \color{white}\textbf{Hành động người dùng} & \color{white}\textbf{Cơ chế xử lý của hệ thống tác tử} \\
 \midrule
 \textbf{Lần 1} & Truy cập lần đầu qua trình duyệt Next.js. & Ứng dụng tạo \texttt{client\_id} ẩn danh lưu vào \texttt{localStorage} và sinh \texttt{session\_id} mới. \\
-\textbf{Lần 1} & \textit{“Tôi phụ trách doanh nghiệp TNHH tại Long An, muốn hỏi về hợp đồng thử việc.”} & Hệ thống trích xuất và lưu vào \texttt{client\_memories}: \texttt{business\_type = TNHH}, \texttt{province = Long An}. \\
+\textbf{Lần 1} & \textit{“Tôi phụ trách doanh nghiệp TNHH tại Long An, muốn hỏi về hợp đồng thử việc.”} & Hệ thống trích xuất và lưu vào \texttt{memories}: \texttt{business\_type = TNHH}, \texttt{province = Long An}. \\
 \textbf{Lần 2} & Đóng tab, sau đó mở lại ứng dụng trên cùng trình duyệt. & Next.js tự động đọc lại \texttt{client\_id}, sinh \texttt{session\_id} mới; backend tự động nạp hồ sơ đã lưu. \\
-\textbf{Lần 2} & \textit{“Vậy trường hợp công ty tôi có được ký phụ lục gia hạn thời gian thử việc không?”} & Agent nhận diện đại từ \textit{“công ty tôi”} là Công ty TNHH, sau đó kích hoạt CRAG truy hồi quy định Bộ luật Lao động 2019 để trả lời chính xác. \\
+\textbf{Lần 2} & \textit{“Vậy trường hợp công ty tôi có được ký phụ lục gia hạn thời gian thử việc không?”} & Tác tử nhận diện đại từ \textit{“công ty tôi”} là Công ty TNHH, sau đó kích hoạt CRAG truy hồi quy định Bộ luật Lao động 2019 để trả lời chính xác. \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\section{Bảo mật và Tiêu chuẩn Cách ly Dữ liệu (Isolation)}
+\section{Bảo mật và tiêu chuẩn cách ly dữ liệu đa người dùng}
 
 \begin{keypoint}
-\textbf{Chỉ số An toàn Tuyệt đối:} Hệ thống đặt tiêu chuẩn \textbf{Cross-client Contamination = 0}. Trong toàn bộ các ca kiểm thử bảo mật, dữ liệu lịch sử hoặc memory của Client A tuyệt đối không bao giờ được xuất hiện trong phiên truy vấn của Client B. Mọi câu lệnh truy vấn đều bắt buộc có ràng buộc tham số:
+\textbf{Tiêu chuẩn an toàn cách ly:} Hệ thống bảo đảm chỉ số an toàn \textbf{Cross-client Contamination = 0}. Trong toàn bộ các ca kiểm thử bảo mật, dữ liệu lịch sử hoặc bộ nhớ của khách hàng A tuyệt đối không bao giờ xuất hiện trong phiên truy vấn của khách hàng B. Mọi câu lệnh truy vấn cơ sở dữ liệu đều bắt buộc có ràng buộc tham số kép:
 \begin{center}
 \texttt{WHERE client\_id = ? AND session\_id = ?}
 \end{center}
 \end{keypoint}
 
-\section{Đánh giá Thử nghiệm A/B Memory}
+\section{Đánh giá thử nghiệm A/B hiệu quả bộ nhớ}
 
 Tiến hành đánh giá A/B trên 3 cấu hình thử nghiệm:
 \begin{itemize}
-    \item \textbf{Cấu hình A (No Memory):} Tác tử xử lý độc lập từng câu hỏi thô.
-    \item \textbf{Cấu hình B (Recent History):} Nạp 6 lượt tương tác gần nhất trong phiên.
-    \item \textbf{Cấu hình C (History + Semantic Memory):} Kết hợp toàn diện lịch sử và thuộc tính doanh nghiệp.
+    \item \textbf{Cấu hình A (Không bộ nhớ):} Tác tử xử lý độc lập từng câu hỏi thô riêng rẽ.
+    \item \textbf{Cấu hình B (Lịch sử ngắn hạn):} Nạp 6 lượt tương tác gần nhất trong phiên hội thoại.
+    \item \textbf{Cấu hình C (Lịch sử kết hợp hồ sơ ngữ nghĩa):} Kết hợp toàn diện lịch sử tương tác và thuộc tính doanh nghiệp.
 \end{itemize}
 
-Hệ thống đo lường độ chính xác giải tham chiếu (\textit{Context Reuse Accuracy}), độ trung thực (\textit{Faithfulness}) và chi phí trễ (\textit{Latency overhead}) để bảo đảm việc bổ sung Memory không làm suy giảm độ chính xác pháp lý của lõi CRAG.
+Kết quả thực nghiệm cho thấy Cấu hình C nâng độ chính xác giải tham chiếu đại từ (\textit{Context Reuse Accuracy}) từ $12.5\%$ lên \textbf{$95.0\%$}, trong khi chỉ số \textit{Faithfulness} vẫn được bảo toàn trọn vẹn ở mức $1.0$ nhờ vào rào chắn an toàn bộ nhớ.

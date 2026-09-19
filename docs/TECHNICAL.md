@@ -22,8 +22,7 @@
 - Provider LLM, Vision và Embedding được tách ra sao?
 - Citation Validator kiểm tra điều gì?
 - Thành phần nào là source of truth và thành phần nào chỉ là index có thể rebuild?
-
-Kiến trúc hiện tại là **Agentic CRAG theo ReAct loop**. Không còn Semantic Router phân loại `database/rag/general` trước khi vào graph và không có Database Tool riêng cho Agent.
+Kiến trúc hệ thống là **Agentic CRAG theo ReAct loop**, trong đó Agent Core tự chủ quyết định việc tra cứu tri thức nội bộ hoặc tìm kiếm web có kiểm soát dựa trên ngữ cảnh hội thoại.
 
 ---
 
@@ -341,8 +340,7 @@ crag_action
 success
 evidence_count
 ```
-
-`route` và `crag_action` trả ra API được **suy ra sau khi turn chạy xong** từ `tool_trace`; chúng không còn điều khiển graph.
+`route` và `crag_action` trả ra API được **suy ra sau khi turn chạy xong** từ `tool_trace` nhằm phục vụ việc theo dõi, kiểm thử và phân tích luồng thực thi.
 
 ---
 
@@ -725,8 +723,7 @@ Nếu query có locator rõ:
 ```
 
 `crag_search` có fast-path truy vấn các chunk tương ứng trong SQLite để ưu tiên đúng điều được người dùng nhắc tới.
-
-Đây vẫn nằm **bên trong CRAG Tool**, không phải Database Tool độc lập.
+Cơ chế này được tích hợp trực tiếp bên trong `crag_search` nhằm tối ưu độ chính xác khi người dùng nhắc đích danh một Điều luật cụ thể.
 
 ---
 

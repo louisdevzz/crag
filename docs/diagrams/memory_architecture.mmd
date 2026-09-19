@@ -1,0 +1,35 @@
+%%{init: {'theme': 'default', 'themeVariables': {'background': '#FFFFFF', 'fontFamily': 'Times New Roman', 'fontSize': '20px'}}}%%
+flowchart TD
+    subgraph S1 ["PHẦN 1: ĐỊNH DANH NGƯỜI DÙNG VÀ TƯỜNG LỬA CÁCH LY (ISOLATION)"]
+        direction LR
+        ID["Định danh Khách hàng<br/>client_id (localStorage) · session_id (sessionStorage)"]:::cClient
+        WALL["Tường lửa Cách ly Tuyệt đối:<br/>WHERE client_id = ? AND session_id = ?<br/>Cross-client Contamination = 0 (Bất biến an toàn)"]:::cGuard
+        ID --> WALL
+    end
+
+    subgraph S2 ["PHẦN 2: PHÂN CẤP BA TẦNG BỘ NHỚ (MULTI-TIER MEMORY)"]
+        direction LR
+        T1["Tầng 1: Working Memory<br/>RAM AgentState<br/>Tức thời theo từng lượt"]:::cT1
+        T2["Tầng 2: Episodic History<br/>Bảng messages (SQLite)<br/>6 lượt trao đổi gần nhất"]:::cT2
+        T3["Tầng 3: Semantic Profile<br/>Bảng memories (SQLite)<br/>Allow-List: loại hình, địa bàn..."]:::cT3
+        T1 --- T2 --- T3
+    end
+
+    subgraph S3 ["PHẦN 3: BẢO VỆ CĂN CỨ VÀ CUNG CẤP BỐI CẢNH CHO TÁC TỬ"]
+        direction LR
+        MGR["Context Manager (agent/context.py)<br/>Giải tham chiếu đại từ (ví dụ: 'công ty tôi')"]:::cCtx
+        RULE["Ranh giới An toàn (Memory Guardrail):<br/>1. Bộ nhớ chỉ giúp hiểu bối cảnh người hỏi.<br/>2. TUYỆT ĐỐI KHÔNG dùng bộ nhớ làm căn cứ pháp luật.<br/>3. Mọi phán quyết bắt buộc truy hồi từ văn bản hiện hành."]:::cAlert
+        OUT(["Cung cấp Ngữ cảnh An toàn cho Agent Node"]):::cEnd
+        MGR --> RULE --> OUT
+    end
+
+    S1 --> S2 --> S3
+
+    classDef cClient fill:#EBF8FF,stroke:#3182CE,stroke-width:2px,color:#2B6CB0;
+    classDef cGuard fill:#FED7D7,stroke:#E53E3E,stroke-width:2px,color:#742A2A;
+    classDef cT1 fill:#EDF2F7,stroke:#4A5568,stroke-width:2px,color:#2D3748;
+    classDef cT2 fill:#FEFCBF,stroke:#D69E2E,stroke-width:2px,color:#744210;
+    classDef cT3 fill:#C6F6D5,stroke:#38A169,stroke-width:2px,color:#22543D;
+    classDef cCtx fill:#FAF5FF,stroke:#805AD5,stroke-width:2px,color:#553C9A;
+    classDef cAlert fill:#FEEBC8,stroke:#DD6B20,stroke-width:2px,color:#7B341E;
+    classDef cEnd fill:#3182CE,stroke:#2B6CB0,stroke-width:2px,color:#FFFFFF;

@@ -1,0 +1,45 @@
+%%{init: {'theme': 'default', 'themeVariables': {'background': '#FFFFFF', 'fontFamily': 'Times New Roman', 'fontSize': '18px'}}}%%
+flowchart LR
+    subgraph COL1 ["PHẦN 1: KHỞI TẠO VÀ VÒNG LẶP SUY LUẬN REACT"]
+        direction TB
+        REQ(["Yêu cầu người dùng (query + client_id)"]):::cStart
+        PREP["prepare_turn: Nạp history và hồ sơ"]:::cPrep
+        AGENT["Agent Node: LLM Lập luận tự chủ"]:::cAgent
+        DECIDE{"Quyết định hành động?"}:::cDec
+        TOOL_CHECK{"Lượt gọi <= 3 (MAX_ROUNDS)?"}:::cDec
+        DISPATCH["Tool Node: Dispatcher"]:::cTool
+
+        REQ --> PREP --> AGENT --> DECIDE
+        DECIDE -->|Cần tra cứu| TOOL_CHECK
+        TOOL_CHECK -->|Hợp lệ| DISPATCH
+    end
+
+    subgraph COL2 ["PHẦN 2: THỰC THI CÔNG CỤ, KIỂM ĐỊNH VÀ LƯU VẾT"]
+        direction TB
+        EXEC_CRAG["crag_search: Truy hồi lai & Tinh lọc"]:::cTool
+        EXEC_WEB["controlled_web_search: Cổng công quyền"]:::cTool
+        TRACE["Cập nhật evidence & tool_trace"]:::cTrace
+        CITE_VAL{"Citation Validator: Kiểm tra trích dẫn & ngày"}:::cVal
+        PERSIST["persist_turn: Lưu SQLite messages & profile"]:::cOk
+        RESP(["Phản hồi Streaming SSE về người dùng"]):::cEnd
+
+        DISPATCH -->|Tra cứu nội bộ| EXEC_CRAG
+        DISPATCH -->|Tìm kiếm web| EXEC_WEB
+        EXEC_CRAG --> TRACE
+        EXEC_WEB --> TRACE
+        TRACE -->|Observation phản hồi| AGENT
+
+        DECIDE -->|Đủ dữ liệu trả lời| CITE_VAL
+        TOOL_CHECK -->|Vượt quá 3 lượt| CITE_VAL
+        CITE_VAL --> PERSIST --> RESP
+    end
+
+    classDef cStart fill:#EBF8FF,stroke:#3182CE,stroke-width:2px,color:#2B6CB0;
+    classDef cPrep fill:#FAF5FF,stroke:#805AD5,stroke-width:2px,color:#553C9A;
+    classDef cAgent fill:#ED8936,stroke:#C05621,stroke-width:2px,color:#FFFFFF;
+    classDef cDec fill:#FEFCBF,stroke:#D69E2E,stroke-width:2px,color:#744210;
+    classDef cTool fill:#EDF2F7,stroke:#4A5568,stroke-width:2px,color:#2D3748;
+    classDef cTrace fill:#E2E8F0,stroke:#718096,stroke-width:2px,color:#1A202C;
+    classDef cVal fill:#FED7E2,stroke:#D53F8C,stroke-width:2px,color:#702459;
+    classDef cOk fill:#C6F6D5,stroke:#38A169,stroke-width:2px,color:#22543D;
+    classDef cEnd fill:#3182CE,stroke:#2B6CB0,stroke-width:2px,color:#FFFFFF;

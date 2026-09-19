@@ -1,43 +1,67 @@
 % !TEX root = ../main.tex
-\chapter{Phụ lục \& Tài liệu Tham khảo}
+\chapter{Phụ lục và tài liệu tham khảo}
 
-\section{PHỤ LỤC A: Danh mục File Mã nguồn Chuẩn hóa}
+\section{Phụ lục A: Danh mục tệp mã nguồn chuẩn hóa}
 
 \begin{table}[htbp]
 \centering
-\caption{Danh mục các module mã nguồn trong hệ thống Legal CRAG V3}
-\label{tab:source_files}
+\caption{Danh mục các module mã nguồn trong hệ thống -- Phần 1: Tác tử, công cụ và truy hồi}
+\label{tab:source_files_part1}
 \renewcommand{\arraystretch}{1.25}
 \rowcolors{2}{tablerowalt}{white}
 \begin{tabularx}{\textwidth}{L{4.8cm} Y}
 \toprule
-\rowcolor{tableheader}\color{white}\textbf{Tên file / Thư mục} & \color{white}\textbf{Mục đích và Chức năng thực thi} \\
+\rowcolor{tableheader}\color{white}\textbf{Tên tệp / Thư mục} & \color{white}\textbf{Mục đích và chức năng thực thi} \\
 \midrule
-\texttt{config.py} & Cấu hình tham số mô hình, Top-K, ngưỡng $(T_{low}, T_{high})$ và allow-list nguồn web. \\
-\texttt{llm.py} & Khởi tạo LLM đa Provider (Groq, OpenAI, OpenRouter, Ollama) theo Factory Pattern và Embeddings BGE-M3. \\
-\texttt{legal/parser.py} & Phân tách cấu trúc văn bản pháp luật theo Chương, Điều, Khoản, Điểm. \\
-\texttt{retrieval/dense.py} & Truy hồi vector ngữ nghĩa với ChromaDB. \\
+\texttt{config.py} & Cấu hình tham số mô hình, Top-K, cặp ngưỡng $(T_{low}, T_{high})$, danh sách cho phép và đường dẫn hệ thống. \\
+\texttt{llm.py} & Khởi tạo mô hình ngôn ngữ lớn đa nhà cung cấp (Groq, OpenAI, Ollama) theo Factory Pattern và mô hình nhúng BGE-M3. \\
+\texttt{agent/state.py} & Định nghĩa cấu trúc trạng thái \texttt{AgentState} dạng TypedDict với các kênh tích lũy. \\
+\texttt{agent/graph.py} & Thiết lập đồ thị StateGraph và rẽ nhánh ReAct (\texttt{agent}, \texttt{tools}, \texttt{cite\_validate}). \\
+\texttt{agent/nodes.py} & Cài đặt các hàm xử lý logic tại từng nút của đồ thị LangGraph. \\
+\texttt{agent/runtime.py} & Điểm vào duy nhất điều phối một lượt hội thoại: \texttt{prepare\_turn}, \texttt{persist\_turn}, \texttt{invoke\_crag}. \\
+\texttt{agent/context.py} & Bộ quản lý ngữ cảnh lắp ghép lịch sử ngắn hạn (\texttt{messages}) và hồ sơ dài hạn (\texttt{memories}). \\
+\texttt{tools/base.py} & Lớp cơ sở \texttt{BaseLegalTool} định nghĩa giao diện và lược đồ chuẩn cho công cụ tác tử. \\
+\texttt{tools/registry.py} & Quản lý đăng ký tập trung và phân phối các lệnh gọi công cụ từ lõi tác tử. \\
+\texttt{tools/crag\_search.py} & Công cụ tra cứu nội bộ: truy hồi lai, hợp nhất RRF, Cross-Encoder, bộ đánh giá ba nhánh và tinh lọc dải quy định. \\
+\texttt{tools/web\_search.py} & Công cụ tìm kiếm web chính thống: viết lại truy vấn, lọc tên miền công quyền, làm sạch mã nguồn HTML. \\
+\texttt{retrieval/dense.py} & Truy hồi vector ngữ nghĩa với ChromaDB và mô hình nhúng BGE-M3. \\
 \texttt{retrieval/bm25.py} & Truy hồi từ khóa chính xác với thuật toán BM25Okapi. \\
-\texttt{retrieval/fusion.py} & Hợp nhất danh sách xếp hạng ứng viên bằng giải thuật Reciprocal Rank Fusion (RRF). \\
-\texttt{retrieval/reranker.py} & Mô hình Cross-Encoder xếp hạng lại và tính relevance score chuẩn hóa Sigmoid. \\
-\texttt{retrieval/refine.py} & Bóc tách và tinh chế các legal strips đạt ngưỡng liên quan tối thiểu. \\
-\texttt{tools/database.py} & Truy vấn dữ liệu có cấu trúc từ SQLite (số hiệu, tình trạng hiệu lực). \\
-\texttt{tools/web\_search.py} & Viết lại truy vấn, tìm kiếm web và lọc tên miền chính thống cho phép. \\
-\texttt{legal/citations.py} & Kiểm tra tính xác thực của source\_id, số Điều/Khoản và URL trích dẫn. \\
-\texttt{agent/state.py} & Định nghĩa cấu trúc trạng thái AgentState dạng TypedDict. \\
-\texttt{agent/nodes.py} & Cài đặt các hàm xử lý logic tại từng node của đồ thị LangGraph. \\
-\texttt{agent/graph.py} & Thiết lập đồ thị StateGraph và các cạnh điều kiện rẽ 3 nhánh CRAG. \\
-\texttt{memory/store.py} & Quản lý cơ sở dữ liệu lịch sử phiên, nhật ký truy vấn và thuộc tính client. \\
-\texttt{memory/extractor.py} & Trích xuất thông tin doanh nghiệp bền vững dựa trên danh mục cho phép. \\
-\texttt{eval/metrics.py} & Tính toán các chỉ số Retrieval, Routing Fallback, RAGAS và Citation. \\
-\texttt{eval/run\_eval.py} & Tự động chạy đánh giá hàng loạt trên Calibration Set và Held-out Test Set. \\
-\texttt{api/main.py} & Hạ tầng FastAPI cung cấp các API REST/JSON phục vụ frontend. \\
-\texttt{frontend/} & Ứng dụng Next.js + TypeScript cung cấp giao diện tương tác người dùng. \\
+\texttt{retrieval/fusion.py} & Hợp nhất danh sách xếp hạng ứng viên bằng giải thuật Reciprocal Rank Fusion ($k=60$). \\
+\texttt{retrieval/reranker.py} & Mô hình Cross-Encoder BGE-Reranker-v2-m3 tái xếp hạng và tính điểm liên quan chuẩn hóa hàm Sigmoid. \\
+\texttt{retrieval/refine.py} & Tinh chế tri thức: bóc tách đoạn trích thành các dải quy định pháp lý và lọc ngưỡng tối thiểu 0.40. \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\section{PHỤ LỤC B: Gợi ý Phân công Công việc Nhóm (5 Thành viên)}
+\begin{table}[htbp]
+\centering
+\caption{Danh mục các module mã nguồn trong hệ thống -- Phần 2: Nghiệp vụ, nạp tri thức, bộ nhớ và giao diện}
+\label{tab:source_files_part2}
+\renewcommand{\arraystretch}{1.25}
+\rowcolors{2}{tablerowalt}{white}
+\begin{tabularx}{\textwidth}{L{4.8cm} Y}
+\toprule
+\rowcolor{tableheader}\color{white}\textbf{Tên tệp / Thư mục} & \color{white}\textbf{Mục đích và chức năng thực thi} \\
+\midrule
+\texttt{legal/cleaner.py} & Làm sạch chuyên sâu: loại bỏ biểu mẫu chấm, số trang, khối nơi nhận, chuẩn hóa bảng mã Unicode NFC. \\
+\texttt{legal/parser.py} & Phân tách cấu trúc văn bản pháp quy theo thứ bậc: Phần $\to$ Chương $\to$ Điều $\to$ Khoản $\to$ Điểm. \\
+\texttt{legal/citations.py} & Bộ kiểm định trích dẫn xác định: kiểm tra sự tồn tại của \texttt{source\_id} và tính hiệu lực theo thời gian. \\
+\texttt{legal/temporal.py} & Mô hình hóa lịch sử văn bản và phân giải quan hệ sửa đổi, bổ sung, thay thế. \\
+\texttt{ingestion/worker.py} & Tiến trình xử lý ngầm đa luồng thực thi quy trình nạp tài liệu tự động. \\
+\texttt{ingestion/chunks.py} & Thuật toán Legal-aware Chunking bảo toàn nguyên vẹn Điều luật và làm giàu tiêu đề ngữ cảnh. \\
+\texttt{ingestion/indexer.py} & Quản trị đồng bộ hóa chỉ mục vector ChromaDB và chỉ mục từ khóa BM25. \\
+\texttt{memory/store.py} & Quản lý cơ sở dữ liệu SQLite: phiên làm việc, nhật ký tin nhắn và thuộc tính người dùng. \\
+\texttt{memory/extractor.py} & Trích xuất thuộc tính doanh nghiệp bền vững dựa trên danh mục cho phép \texttt{ALLOWED\_MEMORY\_KEYS}. \\
+\texttt{eval/run\_eval.py} & Kịch bản tự động hóa đo lường kiểm chuẩn trên tập hiệu chuẩn và tập kiểm thử độc lập. \\
+\texttt{eval/metrics.py} & Cài đặt công thức tính toán chỉ số truy hồi, điều hướng, RAGAS và kiểm định trích dẫn. \\
+\texttt{api/main.py} & Hạ tầng FastAPI cung cấp các điểm cuối RESTful và SSE streaming thời gian thực. \\
+\texttt{frontend/} & Ứng dụng Next.js 14 và TypeScript cung cấp giao diện tương tác người dùng và trang quản trị. \\
+\texttt{schema.sql} & Bản đặc tả DDL của 8 bảng quan hệ chuẩn hóa trong cơ sở dữ liệu SQLite \texttt{app.db}. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Phụ lục B: Phân công công việc nhóm phát triển}
 
 \begin{table}[htbp]
 \centering
@@ -49,75 +73,47 @@
 \toprule
 \rowcolor{tableheader}\color{white}\textbf{Vai trò thành viên} & \color{white}\textbf{Nội dung công việc phụ trách chính} \\
 \midrule
-\textbf{Thành viên 1 -- Data Engineer} & Thu thập văn bản từ cổng thông tin nhà nước; viết parser phân tách điều khoản; chuẩn hóa metadata và quan hệ sửa đổi; thiết kế và quản trị SQLite database. \\
-\textbf{Thành viên 2 -- Retrieval Specialist} & Triển khai Chroma vector store; cài đặt rank-bm25; lập trình giải thuật hợp nhất RRF; tích hợp BGE-Reranker; đo lường các chỉ số Recall@K và MRR. \\
-\textbf{Thành viên 3 -- Agent/CRAG Core} & Hiện thực bộ đánh giá Retrieval Evaluator; cài đặt 3 nhánh Correct, Ambiguous, Incorrect; xây dựng Knowledge Refinement và Web Search; lập trình LangGraph. \\
-\textbf{Thành viên 4 -- Evaluation \& QA} & Xây dựng ground-truth cho Calibration Set và Held-out Test Set; thực hiện quét lưới chọn ngưỡng; đo lường RAGAS, Fallback metrics; cấu hình LangFuse trace. \\
-\textbf{Thành viên 5 -- Frontend \& Memory} & Phát triển ứng dụng Next.js và API FastAPI; xây dựng hệ thống Session Memory và Semantic Profile; thực hiện kiểm thử an toàn cách ly dữ liệu Cross-client = 0. \\
+\textbf{Thành viên 1 -- Kỹ sư Dữ liệu} & Thu thập văn bản từ cổng thông tin nhà nước; lập trình parser bóc tách điều khoản; chuẩn hóa siêu dữ liệu và quan hệ sửa đổi; thiết kế và quản trị SQLite \texttt{app.db}; xây dựng đường ống nạp dữ liệu và tích hợp Vision LLM OCR. \\
+\textbf{Thành viên 2 -- Chuyên viên Truy hồi} & Triển khai kho vector ChromaDB với BGE-M3; cài đặt thuật toán BM25Okapi; lập trình giải thuật hợp nhất RRF; tích hợp mô hình xếp hạng lại Cross-Encoder BGE-Reranker-v2-m3; đo lường các chỉ số Recall@K và MRR. \\
+\textbf{Thành viên 3 -- Lõi Tác tử \& CRAG} & Hiện thực bộ đánh giá truy hồi; cài đặt ba nhánh Correct, Ambiguous, Incorrect; xây dựng cơ chế tinh lọc tri thức và tìm kiếm web có kiểm soát; lập trình đồ thị tác tử LangGraph ReAct. \\
+\textbf{Thành viên 4 -- Kiểm chuẩn \& Đảm bảo} & Xây dựng căn cứ sự thật cho tập hiệu chuẩn và tập kiểm thử độc lập; thực hiện quét lưới chọn cặp ngưỡng; đo lường các chỉ số RAGAS và Fallback; cấu hình giám sát LangFuse và phân tích các ca thất bại. \\
+\textbf{Thành viên 5 -- Giao diện \& Bộ nhớ} & Phát triển ứng dụng Next.js 14 và API FastAPI hỗ trợ luồng SSE streaming; xây dựng hệ thống bộ nhớ phiên và hồ sơ ngữ nghĩa; thực hiện kiểm thử an toàn cách ly dữ liệu đa người dùng. \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\section{PHỤ LỤC C: Tiêu chí Tự Kiểm tra Chất lượng Trước khi Nộp}
+\section{Phụ lục C: Tiêu chí tự kiểm tra chất lượng trước khi nghiệm thu}
 
-\begin{calloutbox}{Bảng kiểm tra điều kiện nghiệm thu}
+\begin{calloutbox}{Bảng kiểm tra điều kiện nghiệm thu hệ thống}
 \begin{itemize}
-    \item Có ít nhất một ca kiểm thử \textbf{Correct} trả lời chính xác và dẫn nguồn hợp lệ.
+    \item Có ít nhất một ca kiểm thử \textbf{Correct} trả lời chính xác và dẫn nguồn trích dẫn hợp lệ.
     \item Có ít nhất một ca kiểm thử \textbf{Incorrect} kích hoạt thành công tìm kiếm web có kiểm soát.
     \item Có ít nhất một ca kiểm thử \textbf{Ambiguous} hợp nhất thành công tri thức nội bộ và mở rộng.
-    \item Có ít nhất một truy vấn metadata trực tiếp từ cơ sở dữ liệu quan hệ.
-    \item Vết thực thi (\textit{Execution Trace}) thể hiện rõ điểm số đánh giá và nhánh rẽ được chọn.
+    \item Có ít nhất một truy vấn siêu dữ liệu hoặc định vị điều khoản trực tiếp từ cơ sở dữ liệu quan hệ SQLite.
+    \item Vết thực thi (\textit{execution trace}) thể hiện rõ điểm số đánh giá và nhánh rẽ được lựa chọn.
     \item Bảng thực nghiệm so sánh đầy đủ giữa Traditional RAG, RAG + Always Web và Full CRAG.
-    \item Tập Calibration Set được phân tách độc lập hoàn toàn khỏi Held-out Test Set.
-    \item Có Citation Validator và chứng minh được khả năng chặn câu trả lời trích dẫn sai.
-    \item Có phân tích ca thất bại thực tế kèm nguyên nhân gốc rễ.
-    \item Tuyệt đối không dùng dữ liệu memory làm căn cứ pháp lý.
-    \item Đạt chỉ số an toàn tuyệt đối: \textbf{Cross-client Contamination = 0}.
+    \item Tập hiệu chuẩn được phân tách độc lập hoàn toàn khỏi tập kiểm thử độc lập.
+    \item Bộ kiểm định trích dẫn chứng minh được khả năng phát hiện và chặn câu trả lời trích dẫn sai.
+    \item Có phân tích ca thất bại thực tế kèm chẩn đoán nguyên nhân gốc rễ.
+    \item Tuyệt đối không sử dụng dữ liệu bộ nhớ làm nguồn căn cứ pháp lý.
+    \item Đạt chỉ số an toàn tuyệt đối: Cross-client Contamination = 0.
 \end{itemize}
 \end{calloutbox}
 
-\section{PHỤ LỤC D: So sánh Chi tiết các Thay đổi giữa Bản cũ và Bản V3}
-
-\begin{table}[htbp]
-\centering
-\caption{Bảng đối chiếu 15 điểm cải tiến then chốt của Phiên bản V3}
-\label{tab:version_comparison}
-\renewcommand{\arraystretch}{1.2}
-\rowcolors{2}{tablerowalt}{white}
-\begin{tabularx}{\textwidth}{L{2.8cm} L{4.8cm} Y}
-\toprule
-\rowcolor{tableheader}\color{white}\textbf{Hạng mục} & \color{white}\textbf{Thiết kế trong các bản cũ} & \color{white}\textbf{Cải tiến đột phá trong Bản V3} \\
-\midrule
-Trọng tâm nghiên cứu & CRAG và Memory phát triển dàn trải ngang hàng. & \textbf{CRAG Core và Thực nghiệm là trọng tâm cốt lõi}; Next.js và Memory là phần mở rộng. \\
-Kiến trúc hệ thống & Router $\to$ DB/RAG $\to$ Grader $\to$ Web/Generate. & \textbf{Kiến trúc 3 Layer chuẩn mực}: Interface \& API, Agent \& Correction, Knowledge \& Data. \\
-Nhánh Ambiguous & Lặp lại truy hồi máy móc với biến \texttt{MAX\_ITER}. & \textbf{Tinh lọc nội bộ + Viết lại truy vấn + Web Search $\to$ Hợp nhất bằng chứng đa nguồn}. \\
-Cơ chế ngưỡng & Dùng một ngưỡng duy nhất 0.5; thử nghiệm cảm tính. & \textbf{Hai ngưỡng độc lập $(T_{low}, T_{high})$} quét lưới tối ưu trên Calibration Set riêng biệt. \\
-Retrieval Evaluator & Dùng prompt yêu cầu chính LLM Generator tự chấm điểm. & \textbf{Sử dụng mô hình Cross-Encoder chuyên biệt} tính relevance score chuẩn hóa hàm Sigmoid. \\
-Cơ chế truy hồi & Truy hồi Dense vector đơn lẻ với Chroma Top-5. & \textbf{Hybrid Retrieval:} Dense BGE-M3 + Lexical BM25 $\to$ Hợp nhất RRF $\to$ Rerank Top-5. \\
-Phương pháp cắt đoạn & Recursive chunking cố định 700 ký tự / 100 overlap. & \textbf{Legal-aware chunking} theo cấu trúc: Chương $\to$ Điều $\to$ Khoản $\to$ Điểm. \\
-Thiết kế Database & Bảng thô sơ với trường đơn \texttt{thay\_the\_boi}. & \textbf{Schema 4 bảng quan hệ}: \texttt{documents}, \texttt{provisions}, \texttt{versions}, \texttt{relations}. \\
-Cơ chế Web Fallback & Lấy trực tiếp kết quả DuckDuckGo đưa vào sinh lời. & \textbf{Viết lại truy vấn $\to$ Lọc tên miền công quyền $\to$ Tải trang $\to$ Bóc tách bằng chứng}. \\
-Kiểm định trích dẫn & Yêu cầu LLM tự ghi số Điều/Khoản trong prompt. & \textbf{Gán locator xác định và Citation Validator} kiểm tra chặt chẽ trước khi hiển thị. \\
-Khung đánh giá & Chỉ so sánh RAG vs CRAG; test set tạo muộn. & \textbf{Ma trận S0--S4, Ablation}, phân tách Calibration vs Held-out Test Set từ đầu. \\
-Quản lý Memory & Memory gắn cứng theo định danh người dùng chung. & \textbf{Phân 3 tầng memory}, liên kết theo cặp ẩn danh \texttt{client\_id/session\_id} cô lập. \\
-Thứ tự thực hiện & DB $\to$ RAG $\to$ CRAG $\to$ LangGraph $\to$ Test $\to$ UI. & \textbf{Dữ liệu $\to$ Thiết kế Test $\to$ Hybrid $\to$ Evaluator $\to$ CRAG 3 nhánh $\to$ UI/Memory}. \\
-Triển khai hệ thống & Ôm đồm hạ tầng sản xuất phức tạp. & \textbf{Tập trung tối đa vào độ chính xác khoa học}, tái lập được trong môi trường cục bộ. \\
-Tầng LLM & Cố định sử dụng duy nhất Ollama nội bộ. & \textbf{Kiến trúc Đa Provider linh hoạt}: Hỗ trợ Groq siêu tốc, OpenAI GPT-4o, OpenRouter và Ollama local qua biến cấu hình. \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\section*{Tài liệu Tham khảo}
-\addcontentsline{toc}{section}{Tài liệu Tham khảo}
+\section*{Tài liệu tham khảo}
+\addcontentsline{toc}{section}{Tài liệu tham khảo}
 
 \begin{enumerate}[label={[\arabic*]}]
     \item Yan, S.-Q., Gu, J.-C., Zhu, Y., \& Ling, Z.-H. (2024). \textit{Corrective Retrieval Augmented Generation}. arXiv preprint arXiv:2401.15884v3.
     \item Lewis, P., Perez, E., Piktus, A., Petroni, F., Karpukhin, V., Goyal, N., \dots \& Kiela, D. (2020). \textit{Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks}. Advances in Neural Information Processing Systems, 33, 9459--9474.
     \item Asai, A., Sewon, M., Jiang, Z., Chen, X., Zettlemoyer, L., \& Hajishirzi, H. (2024). \textit{Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection}. International Conference on Learning Representations (ICLR).
     \item Es, S., James, J., Espinosa-Anke, L., \& Schockaert, S. (2023). \textit{RAGAS: Automated Evaluation of Retrieval Augmented Generation}. arXiv preprint arXiv:2309.15217.
+    \item Cormack, G. V., Clarke, C. L., \& Buettcher, S. (2009). \textit{Reciprocal Rank Fusion Outperforms Condorcet and Individual Rank Learning Methods}. Proceedings of the 32nd International ACM SIGIR Conference.
+    \item Yao, S., Zhao, J., Yu, D., Du, N., Shafran, I., Narasimhan, K., \& Cao, Y. (2023). \textit{ReAct: Synergizing Reasoning and Acting in Language Models}. International Conference on Learning Representations (ICLR).
     \item Quốc hội Nước Cộng hòa Xã hội Chủ nghĩa Việt Nam. (2020). \textit{Luật Doanh nghiệp số 59/2020/QH14}.
     \item Quốc hội Nước Cộng hòa Xã hội Chủ nghĩa Việt Nam. (2019). \textit{Bộ luật Lao động số 45/2019/QH14}.
-    \item Đề cương Đồ án Môn học: \textit{Nghiên cứu và Phát triển Tác tử Trí tuệ Nhân tạo Nâng cao (Advanced AI Agents with LangGraph \& Ollama)}.
+    \item BAAI (Beijing Academy of Artificial Intelligence). (2024). \textit{BGE-M3 and BGE-Reranker-v2-m3 Models Documentation}. Hugging Face Model Hub.
+    \item LangChain Inc. (2024). \textit{LangGraph: Multi-Agent and Stateful Graph Orchestration Reference}. https://langchain-ai.github.io/langgraph/.
     \item Groq Inc. (2024). \textit{Groq LPU Inference Engine Documentation \& API Reference}. https://groq.com.
     \item OpenRouter. (2024). \textit{Unified LLM Interface \& Routing Documentation}. https://openrouter.ai.
 \end{enumerate}
